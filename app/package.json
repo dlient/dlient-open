@@ -1,0 +1,48 @@
+{
+    "name":  "dlient",
+    "private":  true,
+    "version":  "3.0.2",
+    "type":  "module",
+    "description":  "Dlient开发者工具包",
+    "scripts":  {
+                    "dev":  "vite",
+                    "dev:online":  "cross-env DLIENT_DEV_ONLINE=1 vite",
+                    "build":  "tsc \u0026\u0026 vite build \u0026\u0026 electron-builder",
+                    "lint":  "eslint . --report-unused-disable-directives --max-warnings 0",
+                    "preview":  "vite preview"
+                },
+    "devDependencies":  {
+                            "@dlient-open/api-bridge":  "*",
+                            "@dlient-open/core":  "*",
+                            "@dlient-open/i18n":  "*",
+                            "@dlient-open/plugin-sdk":  "*",
+                            "@dlient-open/ui":  "*",
+                            "@eslint/js":  "^9.39.5",
+                            "@types/react":  "^18.2.48",
+                            "@types/react-dom":  "^18.2.18",
+                            "@typescript-eslint/eslint-plugin":  "^8.67.0",
+                            "@typescript-eslint/parser":  "^8.67.0",
+                            "@vitejs/plugin-react":  "^4.2.1",
+                            "cross-env":  "^10.1.0",
+                            "electron":  "^43.1.1",
+                            "electron-builder":  "^24.9.1",
+                            "eslint":  "^10.1.0",
+                            "eslint-plugin-react-hooks":  "^7.1.1",
+                            "eslint-plugin-react-refresh":  "^0.5.3",
+                            "fflate":  "^0.8.2",
+                            "globals":  "^16.5.0",
+                            "lucide-react":  "^0.454.0",
+                            "react":  "18.3.1",
+                            "react-dom":  "18.3.1",
+                            "sonner":  "^2.0.8",
+                            "systemjs":  "^6.15.1",
+                            "typescript":  "^5.2.2",
+                            "vite":  "^5.1.6",
+                            "vite-plugin-electron":  "^0.28.6",
+                            "vite-plugin-electron-renderer":  "^0.14.5"
+                        },
+    "main":  "dist-electron/index.js",
+    "workspaces":  [
+                       "packages/*"
+                   ]
+}

@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data: dlientv3: file:; script-src 'unsafe-inline'; font-src 'self' data:">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>dlient · 确认</title>
+
+  <!-- 主题预置：同步执行，避免首帧闪烁（请求带 theme 优先，否则跟随系统） -->
+  <script>
+  (function () {
+    var m = 'auto';
+    try { m = localStorage.getItem('dlient-dialog-theme') || 'auto'; } catch (e) {}
+    var dark = m === 'dark' || (m === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.classList.toggle('dark', dark);
+  })();
+  </script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+
+    :root {
+      --card:           #FFFFFF;
+      --card-border:    #E4E4E8;
+      --card-shadow:    0 12px 32px rgba(15, 15, 25, 0.12);
+
+      --title:          #1A1A1F;
+      --desc:           #5F5F6B;
+
+      --perm-bg:        rgba(15, 15, 25, 0.04);
+      --perm-kind:      #8A8A96;
+      --perm-reason:    #1A1A1F;
+      --perm-scope:     #3F3F4A;
+
+      --divider:        #E4E4E8;
+
+      --ghost-text:     #5F5F6B;
+      --ghost-hover:    rgba(15, 15, 25, 0.06);
+      --second-bg:      #F0F0F3;
+      --second-text:    #1A1A1F;
+      --second-hover:   #E4E4EA;
+      --primary-bg:     #7C6CF0;
+      --primary-text:   #FFFFFF;
+      --primary-hover:  #6A55E8;
+      --danger-bg:      #E05252;
+      --danger-text:    #FFFFFF;
+      --danger-hover:   #C94040;
+
+      --mask:           rgba(15, 15, 25, 0.35);
+      --focus:          #7C6CF0;
+      --scrollbar:      rgba(15, 15, 25, 0.18);
+      --scrollbar-hover:rgba(15, 15, 25, 0.32);
+      --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+                   'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    }
+
+    .dark {
+      --card:           #26262C;
+      --card-border:    #414149;
+      --card-shadow:    0 12px 32px rgba(0, 0, 0, 0.5);
+
+      --title:          #FFFFFF;
+      --desc:           #B8B8C7;
+
+      --perm-bg:        rgba(255, 255, 255, 0.10);
+      --perm-kind:      rgba(255, 255, 255, 0.60);
+      --perm-reason:    rgba(255, 255, 255, 1);
+      --perm-scope:     rgba(255, 255, 255, 0.80);
+
+      --divider:        #2E2E36;
+
+      --ghost-text:     #9E9EAD;
+      --ghost-hover:    rgba(255, 255, 255, 0.06);
+      --second-bg:      #383840;
+      --second-text:    #E6E6EB;
+      --second-hover:   #43434D;
+      --primary-bg:     #7C6CF0;
+      --primary-text:   #FFFFFF;
+      --primary-hover:  #8B7DF3;
+      --danger-bg:      #E05252;
+      --danger-text:    #FFFFFF;
+      --danger-hover:   #F06A6A;
+
+      --mask:           rgba(0, 0, 0, 0.55);
+      --focus:          #7C6CF0;
+      --scrollbar:      rgba(255, 255, 255, 0.14);
+      --scrollbar-hover:rgba(255, 255, 255, 0.26);
+    }
+
+    html, body { height: 100%; }
+
+    body {
+      margin: 0;
+      background: transparent;
+      color: var(--title);
+      font-family: var(--font-sans);
+      font-size: 14px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      overflow: hidden;
+    }
+
+    /* 弹框舞台：全窗口定位容器；不拦截事件（各 mask 自己拦截） */
+    #dlStage {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      pointer-events: none;
+    }
+
+    /* 遮罩铺满（每个弹框一个全窗口 mask；透明背景 + rgba 遮罩 = 变暗底层的模态层） */
+    .dl-mask {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      background: var(--mask);
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: max(48px, 10vh) 0;
+      overflow: auto;
+      opacity: 0;
+      transition: opacity .2s ease;
+      pointer-events: auto;
+    }
+    .dl-mask.is-open { opacity: 1; }
+
+    .dl-card {
+      display: flex;
+      flex-direction: column;
+      width: 522px;
+      max-width: calc(100% - 32px);
+      max-height: calc(100vh * 2 / 3);
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      box-shadow: var(--card-shadow);
+      overflow: hidden;
+      opacity: 0;
+      transform: scale(.96) translateY(-8px);
+      transition: opacity .28s ease, transform .28s cubic-bezier(.22, 1.2, .36, 1);
+    }
+    .dl-mask.is-open .dl-card { opacity: 1; transform: none; }
+
+    .dl-header { flex: 0 0 auto; padding: 20px; }
+    .dl-title { margin: 0; font-size: 16px; font-weight: 600; color: var(--title); }
+
+    .dl-body { flex: 1 1 auto; min-height: 0; overflow: hidden auto; scrollbar-width: thin; scrollbar-color: var(--scrollbar) transparent; }
+    .dl-body::-webkit-scrollbar { width: 8px; }
+    .dl-body::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 4px; }
+    .dl-body::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); }
+    .dl-body::-webkit-scrollbar-track { background: transparent; }
+
+    .dl-desc { margin: 0; padding: 16px 20px; font-size: 13px; line-height: 20px; color: var(--desc); }
+    .dl-msg { margin: 0; padding: 16px 20px; font-size: 14px; line-height: 22px; color: var(--title); white-space: pre-wrap; word-break: break-word; }
+
+    .dl-list { display: flex; flex-direction: column; gap: 20px; padding: 0 20px 20px; }
+
+    .dl-perm { display: flex; gap: 10px; padding: 11px 16px 11px 6px; border-radius: 10px; background: var(--perm-bg); }
+    .dl-perm__icon {
+      flex: 0 0 auto; width: 40px; height: 40px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden; background: transparent;
+    }
+    .dl-perm__icon img { width: 40px; height: 40px; display: block; }
+    .dl-perm__icon svg { width: 20px; height: 20px; display: block; color: #FFFFFF; }
+    .dl-perm__main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; line-height: 1.25; }
+    .dl-perm__kind { font-size: 12px; font-weight: 500; color: var(--perm-kind); }
+    .dl-perm__reason { font-size: 14px; color: var(--perm-reason); }
+    .dl-perm__scope { font-size: 13px; font-weight: 500; color: var(--perm-scope); overflow-wrap: anywhere; }
+
+    .dl-divider { flex: 0 0 auto; height: 1px; background: var(--divider); }
+
+    .dl-footer { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; }
+    .dl-actions { display: flex; gap: 12px; }
+
+    .dl-btn {
+      appearance: none; cursor: pointer; font: inherit;
+      font-size: 13px; font-weight: 500; height: 36px; padding: 0 16px;
+      border: 0; border-radius: 6px; white-space: nowrap;
+      transition: background .15s, color .15s;
+    }
+    .dl-btn--ghost           { background: transparent;       color: var(--ghost-text); }
+    .dl-btn--ghost:hover     { background: var(--ghost-hover); color: var(--title); }
+    .dl-btn--secondary       { background: var(--second-bg);  color: var(--second-text); }
+    .dl-btn--secondary:hover { background: var(--second-hover); }
+    .dl-btn--primary         { background: var(--primary-bg); color: var(--primary-text); }
+    .dl-btn--primary:hover   { background: var(--primary-hover); }
+    .dl-btn--danger          { background: var(--danger-bg); color: var(--danger-text); }
+    .dl-btn--danger:hover    { background: var(--danger-hover); }
+
+    :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .dl-mask, .dl-card, .dl-btn { transition: none; }
+      .dl-card { transform: none; }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- 弹框舞台：每个请求动态创建独立 .dl-mask 挂载，支持多弹框并发叠加 -->
+  <div id="dlStage"></div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    var BRIDGE = window.dlientDialog;
+    if (!BRIDGE) return;
+
+    /* ============ i18n（随请求 locale） ============ */
+    var L = {
+      'zh-CN': {
+        permissionTitle: '授权申请',
+        permissionDesc: '插件「{from}」需要申请以下权限，请查阅后操作。',
+        reject: '拒绝授权',
+        once: '允许本次',
+        permanent: '永久授权',
+        allow: '允许',
+        confirm: '确认',
+        cancel: '取消',
+        deleteTitle: '删除确认',
+        infoTitle: '提示',
+        close: '关闭',
+      },
+      'en-US': {
+        permissionTitle: 'Permission Request',
+        permissionDesc: 'Plugin "{from}" requests the following permissions. Please review before proceeding.',
+        reject: 'Deny',
+        once: 'Allow once',
+        permanent: 'Always allow',
+        allow: 'Allow',
+        confirm: 'Confirm',
+        cancel: 'Cancel',
+        deleteTitle: 'Confirm Deletion',
+        infoTitle: 'Notice',
+        close: 'Close',
+      }
+    };
+
+    var FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
+    /* ============ 图标：目录 svg（fs/net/cmd/log/plugin）+ 内联兜底 ============ */
+    var ICON_SRC = { fs: 'fs.svg', net: 'net.svg', cmd: 'cmd.svg', log: 'log.svg', plugin: 'plugin.svg' };
+    var ICON_PLUGIN_FALLBACK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+      '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>' +
+      '<rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>';
+
+    function inferIcon(kind, method) {
+      var s = String(kind || '') + ' ' + String(method || '');
+      if (/log|日志/i.test(s)) return 'log';
+      if (/网络|net|connect/i.test(s)) return 'net';
+      if (/命令|执行|spawn|运行|command/i.test(s)) return 'cmd';
+      if (/文件|读写|fs|read|write/i.test(s)) return 'fs';
+      return 'plugin';
+    }
+
+    var stage = document.getElementById('dlStage');
+    var stack = [];   // { requestId, mask, card } 弹框栈：栈顶 = 当前可操作弹框
+    var locale = 'zh-CN';
+
+    function t(key) {
+      var dict = L[locale] || L['zh-CN'];
+      return dict[key] || key;
+    }
+
+    function applyTheme(theme) {
+      if (theme === 'light' || theme === 'dark') {
+        document.documentElement.classList.toggle('dark', theme === 'dark');
+        try { localStorage.setItem('dlient-dialog-theme', theme); } catch (e) {}
+      }
+    }
+
+    function makeIcon(item) {
+      // 直接图标 URL（跨插件确认 → 目标插件 icon）优先；否则按类型 key 取目录 svg / 内联占位
+      if (item.iconSrc && /^(dlientv3:|file:)/.test(String(item.iconSrc))) {
+        return '<img src="' + item.iconSrc + '" alt="" aria-hidden="true">';
+      }
+      var name = item.icon || inferIcon(item.kind, item.method);
+      if (ICON_SRC[name]) return '<img src="' + ICON_SRC[name] + '" alt="" aria-hidden="true">';
+      return ICON_PLUGIN_FALLBACK;
+    }
+
+    /* ============ 从栈移除弹框（不回传；超时/关闭通知用） ============ */
+    function removeEntry(requestId) {
+      for (var i = 0; i < stack.length; i++) {
+        if (stack[i].requestId !== requestId) continue;
+        var entry = stack.splice(i, 1)[0];
+        entry.mask.classList.remove('is-open');
+        var finish = function () { entry.mask.remove(); };
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches ? finish() : setTimeout(finish, 220);
+        focusTop();
+        return;
+      }
+    }
+
+    /* ============ 唯一出口：按 requestId 回传一次，并从栈移除 ============ */
+    function settle(requestId, result) {
+      var existed = false;
+      for (var i = 0; i < stack.length; i++) if (stack[i].requestId === requestId) { existed = true; break; }
+      if (!existed) return;
+      removeEntry(requestId);
+      BRIDGE.reply({ requestId: requestId, ok: result.ok === true, action: result.action, scope: result.scope });
+    }
+
+    /* 焦点还给栈顶剩余弹框（若有） */
+    function focusTop() {
+      if (!stack.length) return;
+      var first = stack[stack.length - 1].card.querySelector(FOCUSABLE);
+      if (first) first.focus();
+    }
+
+    /* 创建一个弹框 mask（独立全窗口遮罩 + 居中卡片），push 进栈并聚焦 */
+    function openDialog(req, title, bodyNodes, leftButtons, rightButtons) {
+      var mask = document.createElement('div');
+      mask.className = 'dl-mask';
+
+      var card = document.createElement('div');
+      card.className = 'dl-card';
+      card.setAttribute('role', 'dialog');
+      card.setAttribute('aria-modal', 'true');
+
+      var header = document.createElement('header');
+      header.className = 'dl-header';
+      var h = document.createElement('h2');
+      h.className = 'dl-title';
+      h.textContent = title;
+      header.appendChild(h);
+
+      var body = document.createElement('div');
+      body.className = 'dl-body';
+      bodyNodes.forEach(function (n) { body.appendChild(n); });
+
+      var divider = document.createElement('div');
+      divider.className = 'dl-divider';
+
+      var footer = document.createElement('footer');
+      footer.className = 'dl-footer';
+      var left = document.createElement('div');
+      left.className = 'dl-actions';
+      var right = document.createElement('div');
+      right.className = 'dl-actions';
+      leftButtons.forEach(function (b) { left.appendChild(b); });
+      rightButtons.forEach(function (b) { right.appendChild(b); });
+      footer.appendChild(left);
+      footer.appendChild(right);
+
+      card.appendChild(header);
+      card.appendChild(body);
+      card.appendChild(divider);
+      card.appendChild(footer);
+      mask.appendChild(card);
+      stage.appendChild(mask);
+      stack.push({ requestId: req.requestId, mask: mask, card: card });
+
+      void mask.offsetHeight;
+      mask.classList.add('is-open');
+      var first = card.querySelector(FOCUSABLE);
+      if (first) first.focus();
+    }
+
+    function btn(label, cls, onClick) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'dl-btn ' + cls;
+      b.textContent = label;
+      b.addEventListener('click', onClick);
+      return b;
+    }
+
+    function textEl(cls, text) {
+      var d = document.createElement('div');
+      d.className = cls;
+      d.textContent = text;
+      return d;
+    }
+
+    /* ============ 权限弹框 ============ */
+    function renderPerm(item) {
+      var wrap = document.createElement('article');
+      wrap.className = 'dl-perm';
+      var icon = document.createElement('span');
+      icon.className = 'dl-perm__icon';
+      icon.setAttribute('aria-hidden', 'true');
+      icon.innerHTML = makeIcon(item);
+      wrap.appendChild(icon);
+
+      var main = document.createElement('div');
+      main.className = 'dl-perm__main';
+      if (item.kind) main.appendChild(textEl('dl-perm__kind', item.kind));
+      if (item.reason) main.appendChild(textEl('dl-perm__reason', item.reason));
+      (item.scope || []).forEach(function (line) { main.appendChild(textEl('dl-perm__scope', line)); });
+      wrap.appendChild(main);
+      return wrap;
+    }
+
+    function openPermission(req) {
+      var data = req.data || {};
+      var items = Array.isArray(data.items) ? data.items : [];
+      var fromName = data.fromName || '';
+      var canScope = data.canScope === true;
+      var requestId = req.requestId;
+
+      var desc = textEl('dl-desc', t('permissionDesc').replace('{from}', fromName));
+      var list = document.createElement('div');
+      list.className = 'dl-list';
+      items.forEach(function (it) { list.appendChild(renderPerm(it)); });
+
+      var left = [btn(t('reject'), 'dl-btn--ghost', function () { settle(requestId, { ok: false, action: 'reject' }); })];
+      var right = canScope
+        ? [
+            btn(t('once'), 'dl-btn--secondary', function () { settle(requestId, { ok: true, action: 'once', scope: 'session' }); }),
+            btn(t('permanent'), 'dl-btn--primary', function () { settle(requestId, { ok: true, action: 'permanent', scope: 'persistent' }); }),
+          ]
+        : [ btn(t('allow'), 'dl-btn--primary', function () { settle(requestId, { ok: true, action: 'permanent', scope: 'persistent' }); }) ];
+
+      openDialog(req, data.title || t('permissionTitle'), [desc, list], left, right);
+    }
+
+    /* ============ 通用消息弹框（confirm / delete / info 复用） ============ */
+    function openMessage(req) {
+      var data = req.data || {};
+      var danger = req.dialog === 'delete' || data.danger === true;
+      var title = data.title || (req.dialog === 'delete' ? t('deleteTitle') : req.dialog === 'info' ? t('infoTitle') : t('infoTitle'));
+      var msg = textEl('dl-msg', String(data.message || ''));
+      var requestId = req.requestId;
+
+      var left = [ btn(t('cancel'), 'dl-btn--ghost', function () { settle(requestId, { ok: false, action: 'cancel' }); }) ];
+      var right = [ btn(t(data.okText) || (danger ? t('confirm') : t('confirm')), danger ? 'dl-btn--danger' : 'dl-btn--primary', function () { settle(requestId, { ok: true, action: 'confirm' }); }) ];
+
+      openDialog(req, title, [msg], left, right);
+    }
+
+    /* ============ 请求入口 ============ */
+    BRIDGE.onRequest(function (req) {
+      if (!req || typeof req.requestId !== 'number') return;
+      locale = (req.locale === 'en-US' || req.locale === 'zh-CN') ? req.locale : 'zh-CN';
+      applyTheme(req.theme);
+      if (req.dialog === 'permission') openPermission(req);
+      else openMessage(req);
+    });
+
+    /* 主进程超时/关闭通知：按 requestId 移除弹框（无回传，主进程已单方面 resolve） */
+    BRIDGE.onClose(function (r) {
+      if (!r || typeof r.requestId !== 'number') return;
+      removeEntry(r.requestId);
+    });
+
+    /* Tab 焦点圈：仅作用于栈顶弹框（无 ESC 关闭——只能通过按钮操作） */
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Tab') return;
+      if (!stack.length) return;
+      var card = stack[stack.length - 1].card;
+      var nodes = Array.prototype.filter.call(
+        card.querySelectorAll(FOCUSABLE),
+        function (n) { return !n.disabled && n.offsetParent !== null; }
+      );
+      if (!nodes.length) return;
+      var first = nodes[0];
+      var last = nodes[nodes.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    });
+
+    /* 就绪握手：主进程等 ready 后再发请求 */
+    BRIDGE.ready();
+  })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,51 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+dist-electron
+.__mf_*
+*.local
+packages/*/dist
+packages/*/node_modules
+packages/*/package-lock.json
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ===== 独立仓库补充：敏感凭证 / 运行时数据 / 构建产物 =====
+# 敏感凭证（不得入库）
+config.json
+*.pem
+*.key
+*.enc
+master.key
+session.enc
+installed.json
+
+# 构建 / 打包产物
+*.asar
+release/
+.vite/
+*.tsbuildinfo
+
+# 本地 tsc/vite 生成物
+tsconfig.node.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+test-formdata-out.txt

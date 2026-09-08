@@ -1,0 +1,23 @@
+{
+    "name":  "@dlient-open/core",
+    "version":  "3.0.0",
+    "private":  false,
+    "type":  "module",
+    "main":  "./src/index.ts",
+    "types":  "./src/index.ts",
+    "exports":  {
+                    ".":  "./src/index.ts",
+                    "./pool-worker":  "./src/pool-worker.ts"
+                },
+    "files":  [
+                  "src"
+              ],
+    "peerDependencies":  {
+                             "@dlient-open/plugin-sdk":  "*",
+                             "electron":  "\u003e=30.0.0"
+                         },
+    "devDependencies":  {
+                            "electron":  "^30.0.0",
+                            "typescript":  "^5.4.0"
+                        }
+}

@@ -1,0 +1,102 @@
+/**
+ * 吸顶通用弹框样式（createDialog / modal.dialog）
+ *
+ * 结构（DialogPlugin 渲染）：
+ *   - 卡片：.dui-dialog.dui-modal-dialog[.__card--fixed]
+ *   - 遮罩：.dui-dialog-mask（兄弟节点）
+ *   - 三段：.dui-dialog__header / __body / __footer
+ * 样式引用包内 shadcn 语义变量（--card/--border/--muted-foreground …），无宿主 tokens 依赖。
+ */
+
+/* 吸顶：top 定位参数已由命令式 dialog 写入卡片 margin-top，这里做默认兜底 */
+.dui-dialog.dui-modal-dialog {
+  margin-top: 0;
+}
+
+/* 遮罩：背景虚化（与卡片是兄弟，不会模糊卡片自身） */
+.dui-dialog-mask {
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+}
+
+/* 卡片高度：未固定 height 时最大为视口 2/3，超出滚动交给 __body */
+.dui-dialog.dui-modal-dialog__card--fixed {
+  max-height: none;
+}
+
+/* 头部（固定） */
+.dui-modal-dialog .dui-dialog__header {
+  flex-shrink: 0;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background-color: var(--dl-fill-0);
+}
+
+.dui-modal-dialog__header {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  gap: 12px;
+}
+
+/* 内容区（零 padding，超高滚动） */
+.dui-modal-dialog .dui-dialog__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden auto;
+  color: var(--foreground);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.dui-modal-dialog .dui-dialog__body::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.dui-modal-dialog .dui-dialog__body::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  background-clip: content-box;
+  background-color: var(--border);
+  border-radius: 9999px;
+}
+.dui-modal-dialog .dui-dialog__body::-webkit-scrollbar-thumb:hover {
+  background-color: var(--muted-foreground);
+}
+
+/* 内容区滚动体（createDialog 注入的一层） */
+.dui-modal-dialog .dui-dialog__body-scroll {
+  height: 100%;
+}
+
+.dui-modal-dialog__content {
+  padding: 0;
+}
+
+/* 底部（固定） */
+.dui-modal-dialog .dui-dialog__footer {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  background-color: var(--dl-fill-0);
+}
+
+.dui-modal-dialog__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+}
+
+/* 无障碍：降低动效偏好下关闭全部动画 */
+@media (prefers-reduced-motion: reduce) {
+  .dui-dialog.dui-modal-dialog,
+  .dui-dialog-mask {
+    animation: none !important;
+  }
+}

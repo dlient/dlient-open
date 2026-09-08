@@ -1,0 +1,262 @@
+/* ==================================================================
+ * dui-modal —— 命令式反馈弹框视觉层
+ * 样式引用包内 shadcn 语义变量 / color-mix（随 .dark 自动切换），
+ * 不依赖宿主 tokens.css 的 --dlient-*。
+ * ================================================================== */
+
+/* ------------------------------------------------------------------
+ * 1. 覆盖 Dialog 外观（新 DOM：.dui-dialog-mask / .dui-dialog，基础类在 ui.css @layer）
+ * ------------------------------------------------------------------ */
+.dui-modal.dui-dialog {
+  padding: 0;
+  overflow: hidden;
+  border-radius: calc(var(--radius) + 4px);
+}
+
+/* body / footer 的内边距交给自有结构控制 */
+.dui-modal .dui-dialog__body {
+  padding: 0;
+  color: var(--foreground);
+}
+
+.dui-modal .dui-dialog__footer {
+  padding: 0;
+  display: block;
+  text-align: left;
+  border-top: none;
+}
+
+/* ------------------------------------------------------------------
+ * 2. 语义色系（color-mix 出 soft 底盘 / 光环，随主题变量联动）
+ * ------------------------------------------------------------------ */
+.dui-modal--info .dui-modal__icon { color: var(--primary); }
+.dui-modal--info .dui-modal__icon-wrap { background-color: color-mix(in oklab, var(--primary) 10%, transparent); }
+.dui-modal--info .dui-modal__ring { border-color: color-mix(in oklab, var(--primary) 22%, transparent); }
+
+.dui-modal--success .dui-modal__icon { color: var(--success); }
+.dui-modal--success .dui-modal__icon-wrap { background-color: color-mix(in oklab, var(--success) 12%, transparent); }
+.dui-modal--success .dui-modal__ring { border-color: color-mix(in oklab, var(--success) 24%, transparent); }
+
+.dui-modal--warn .dui-modal__icon,
+.dui-modal--confirm .dui-modal__icon { color: var(--warning); }
+.dui-modal--warn .dui-modal__icon-wrap,
+.dui-modal--confirm .dui-modal__icon-wrap { background-color: color-mix(in oklab, var(--warning) 15%, transparent); }
+.dui-modal--warn .dui-modal__ring,
+.dui-modal--confirm .dui-modal__ring { border-color: color-mix(in oklab, var(--warning) 28%, transparent); }
+
+.dui-modal--error .dui-modal__icon,
+.dui-modal--delete .dui-modal__icon { color: var(--destructive); }
+.dui-modal--error .dui-modal__icon-wrap,
+.dui-modal--delete .dui-modal__icon-wrap { background-color: color-mix(in oklab, var(--destructive) 10%, transparent); }
+.dui-modal--error .dui-modal__ring,
+.dui-modal--delete .dui-modal__ring { border-color: color-mix(in oklab, var(--destructive) 22%, transparent); }
+
+/* ------------------------------------------------------------------
+ * 3. 正文结构
+ * ------------------------------------------------------------------ */
+.dui-modal__body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 28px 24px 20px;
+  text-align: center;
+}
+
+/* 关闭按钮（自绘，绝对定位于正文右上角） */
+.dui-modal__close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background-color: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+.dui-modal__close:hover {
+  color: var(--foreground);
+  background-color: var(--muted);
+}
+
+/* 图标底盘 */
+.dui-modal__icon-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 16px;
+  border-radius: 50%;
+}
+
+.dui-modal__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  pointer-events: none;
+}
+
+.dui-modal__icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dui-modal__title {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.4;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.dui-modal__desc {
+  margin: 8px 0 0;
+  max-width: 320px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted-foreground);
+}
+
+/* ------------------------------------------------------------------
+ * 4. 按钮区（布局/尺寸；配色由 Button variant/语义覆盖类控制）
+ * ------------------------------------------------------------------ */
+.dui-modal__footer {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  padding: 0 24px 24px;
+}
+
+.dui-modal__footer--dual {
+  grid-template-columns: 1fr 1fr;
+}
+
+.dui-modal__footer--custom {
+  display: block;
+  padding: 0 20px 20px;
+}
+
+/* 按钮铺满所在栅格列 */
+.dui-modal .dui-modal__btn {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  margin: 0;
+}
+
+/* ------------------------------------------------------------------
+ * 5. 动画
+ * ------------------------------------------------------------------ */
+@keyframes dui-modal-mask-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes dui-modal-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.94); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* 图标弹入 */
+@keyframes dui-modal-icon-pop {
+  0% { opacity: 0; transform: scale(0.4); }
+  60% { opacity: 1; transform: scale(1.12); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.dui-modal-anim-pop {
+  animation: dui-modal-icon-pop 480ms cubic-bezier(0.22, 1.2, 0.36, 1) 80ms both;
+}
+
+/* 双层扩散光环 */
+@keyframes dui-modal-ring-pulse {
+  0% { opacity: 0.55; transform: scale(1); }
+  70% { opacity: 0; transform: scale(1.55); }
+  100% { opacity: 0; transform: scale(1.55); }
+}
+.dui-modal-anim-ring {
+  animation: dui-modal-ring-pulse 2200ms ease-out 300ms infinite;
+}
+.dui-modal-anim-ring-2 {
+  animation: dui-modal-ring-pulse 2200ms ease-out 1100ms infinite;
+}
+
+/* info：上下浮动 */
+@keyframes dui-modal-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+.dui-modal-anim-float {
+  animation: dui-modal-float 2600ms ease-in-out 700ms infinite;
+}
+
+/* success：心跳 */
+@keyframes dui-modal-beat {
+  0%, 100% { transform: scale(1); }
+  20% { transform: scale(1.09); }
+  40% { transform: scale(1); }
+}
+.dui-modal-anim-beat {
+  animation: dui-modal-beat 2400ms ease-in-out 700ms infinite;
+}
+
+/* warning：左右轻摆 */
+@keyframes dui-modal-shake {
+  0%, 60%, 100% { transform: rotate(0deg); }
+  68% { transform: rotate(-7deg); }
+  76% { transform: rotate(6deg); }
+  84% { transform: rotate(-4deg); }
+  92% { transform: rotate(2deg); }
+}
+.dui-modal-anim-shake {
+  transform-origin: 50% 70%;
+  animation: dui-modal-shake 2800ms ease-in-out 700ms infinite;
+}
+
+/* error：呼吸缩放 */
+@keyframes dui-modal-throb {
+  0%, 100% { transform: scale(1); }
+  35% { transform: scale(1.1); }
+  55% { transform: scale(0.97); }
+}
+.dui-modal-anim-throb {
+  animation: dui-modal-throb 2200ms ease-in-out 700ms infinite;
+}
+
+/* delete：垃圾桶掀盖（1024 viewBox，位移量按比例放大） */
+@keyframes dui-modal-lid-lift {
+  0%, 60%, 100% { transform: translateY(0) rotate(0deg); }
+  70% { transform: translateY(-64px) rotate(-7deg); }
+  82% { transform: translateY(-42px) rotate(-3.5deg); }
+}
+.dui-modal-anim-lid {
+  transform-origin: 900px 130px;
+  animation: dui-modal-lid-lift 2600ms ease-in-out 700ms infinite;
+}
+
+/* 无障碍：降低动效偏好下全部关闭 */
+@media (prefers-reduced-motion: reduce) {
+  .dui-dialog-mask,
+  .dui-modal.dui-dialog,
+  .dui-modal-anim-pop,
+  .dui-modal-anim-ring,
+  .dui-modal-anim-ring-2,
+  .dui-modal-anim-float,
+  .dui-modal-anim-beat,
+  .dui-modal-anim-shake,
+  .dui-modal-anim-throb,
+  .dui-modal-anim-lid {
+    animation: none !important;
+  }
+}

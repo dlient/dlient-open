@@ -1,0 +1,333 @@
+/* plugin-layout 样式：基于 tokens.css 的 --dlient-* 语义变量（宿主提供，亮/暗随宿主 .dark 切换；
+   --dl-fill-* 为宿主 index.css 自有填充色，此处直接引用）。按钮 / 弹框 / 浮层等组件由 @dlient/ui primitives 提供。
+   布局结构沿用：标题栏（Header）+ 活动栏（Aside）+ 内容区（Content，keep-alive）。 */
+
+/* ===== 标题栏 ===== */
+.dl-titlebar {
+  -webkit-app-region: drag;
+  display: flex;
+  height: 34px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0 0 14px;
+}
+.dl-titlebar-left { display: flex; align-items: center; gap: 8px; -webkit-app-region: no-drag; }
+.dl-logo-img { width: 16px; height: 16px; border-radius: 4px; }
+.dl-title { font-size: 13px; font-weight: 600; color: var(--dlient-text-color-primary); }
+.dl-crumb { font-size: 12px; color: var(--dlient-text-color-secondary); }
+.dl-titlebar-right { display: flex; align-items: center; height: 100%; -webkit-app-region: no-drag; }
+.dl-winbtns { display: flex; align-items: center; height: 100%; color: var(--dlient-text-color-secondary); }
+.dl-winbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--dlient-text-color-secondary);
+  cursor: pointer;
+  font-size: 16px;
+  transition: background .15s, color .15s;
+}
+.dl-winbtn:hover { color: var(--dlient-text-color-primary); background: var(--dl-fill-0); }
+.dl-winbtn.dl-close:hover { color: var(--dlient-color-white); background: var(--dlient-error-color); }
+/* 窗口控制图标：assets 内 SVG 经 mask 渲染，颜色跟随 currentColor */
+.dl-winbtn-icon {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  background: currentColor;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+}
+
+/* ===== 主体 ===== */
+.dl-root { display: flex; height: 100%; flex-direction: column; overflow: hidden; background: var(--dlient-bg-color-container-hover); color: var(--dlient-text-color-primary); font-family: "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif; }
+.dl-body { display: flex; min-height: 0; flex: 1; }
+
+/* 活动栏 */
+.dl-rail {
+  display: flex;
+  width: 44px;
+  flex-shrink: 0;
+  flex-direction: column;
+  align-items: center;
+  background: transparent;
+  padding: 12px 0;
+  gap: 6px;
+}
+.dl-rail-btn {
+  display: flex;
+  height: 32px;
+  width: 32px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dlient-text-color-placeholder);
+  cursor: pointer;
+  font-size: 18px;
+  transition: background .15s, color .15s;
+}
+.dl-rail-btn:hover { color: var(--dlient-text-color-primary); }
+.dl-rail-btn.active { color: var(--dlient-brand-color); }
+/* 活动栏插件图标容器：仅布局（真彩图标经 PluginIcon <img> 渲染，不走 mask） */
+.dl-rail-icon {
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+}
+/* 宿主功能按钮（操作台图标已统一 PluginIcon；仍用 mask 的单色按钮，如「···」）才追加此 mask 类 */
+.dl-rail-mask {
+  background: currentColor;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+}
+.dl-rail-icon-sm { width: 18px; height: 18px; }
+/* 操作台按钮真彩图标（内置 layout 资源经 vite 打包为 URL，直接 <img> 渲染） */
+.dl-rail-img { object-fit: contain; }
+/* 导入插件按钮（「＋」字符图标） */
+.dl-rail-import { font-size: 18px; font-weight: 400; line-height: 1; text-align: center; color: var(--dlient-color-text-3); }
+.dl-rail-btn:hover .dl-rail-import { color: var(--dlient-text-color-primary); }
+/* 底部固定入口图标（设置 / 市场）：内联 SVG fill=currentColor —— 未选中 --dlient-color-text-3，选中主色调 */
+.dl-rail-fixed-icon { display: block; width: 18px; height: 18px; color: var(--dlient-color-text-3); }
+.dl-rail-btn:hover .dl-rail-fixed-icon { color: var(--dlient-text-color-primary); }
+.dl-rail-btn.active .dl-rail-fixed-icon { color: var(--dlient-brand-color); }
+/* 活动栏中间应用区：占满剩余高度；应用过多放不下时折叠溢出项（App.tsx 溢出折叠逻辑） */
+.dl-rail-apps {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  width: 100%;
+}
+/* 「···」溢出按钮：hover 展开右侧更多应用列表（App.tsx 本地 hover 状态实现，无第三方浮层依赖） */
+.dl-rail-more { display: flex; align-items: center; justify-content: center; }
+/* 溢出弹出面板：fixed 定位（内联 left/top 由 App.tsx 依按钮位置计算），避免被 .dl-rail-apps 裁剪 */
+.dl-rail-more-panel {
+  position: fixed;
+  z-index: var(--dlient-z-popup);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 160px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--dlient-bg-color-popup);
+  border: 1px solid var(--dlient-component-stroke-color);
+  border-radius: var(--dlient-radius-medium);
+  box-shadow: var(--dlient-shadow-s3);
+}
+.dl-rail-more-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dlient-text-color-primary);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.dl-rail-more-item:hover { background: var(--dlient-bg-color-container-hover); }
+.dl-rail-more-item.active { color: var(--dlient-brand-color); }
+.dl-rail-more-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  background: var(--dlient-bg-color-container-hover);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+}
+.dl-rail-more-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 内容区 */
+.dl-main { min-width: 0; flex: 1; overflow: hidden; position: relative; background: var(--dlient-color-bg-1); border-radius: 12px 0 0 12px; }
+.dl-page { position: absolute; inset: 0; height: 100%; width: 100%; overflow-y: auto; }
+.dl-page-pad { padding: 32px; }
+
+/* ===== 操作台（console）===== */
+.dl-console-header { margin-bottom: 28px; }
+.dl-console-title { font-size: 24px; font-weight: 700; margin: 0; color: var(--dlient-text-color-primary); }
+.dl-console-sub { margin: 6px 0 0; font-size: 13px; color: var(--dlient-text-color-secondary); }
+.dl-section { margin-bottom: 28px; }
+.dl-section-head { margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; }
+.dl-section-title { font-size: 16px; font-weight: 600; margin: 0; color: var(--dlient-text-color-primary); }
+.dl-section-count { font-size: 12px; color: var(--dlient-text-color-placeholder); }
+.dl-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+
+/* 应用卡片（dlient 卡片布局：自定义内容区） */
+.dl-card { border: 1px solid var(--dlient-component-stroke-color); border-radius: 8px; background: var(--dl-fill-0); padding: 16px; }
+.dl-card-click { cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+.dl-card-click:hover { border-color: var(--dlient-brand-color);  background: var(--dl-fill-1);}
+.dl-card-head { display: flex; align-items: center; gap: 10px; }
+.dl-card-meta { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
+.dl-card-icon {
+  display: inline-block;
+  height: 36px;
+  width: 36px;
+  flex-shrink: 0;
+}
+.dl-card-icon-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--dlient-bg-color-container-hover);
+  border-radius: 8px;
+  font-weight: 600;
+}
+.dl-card-name { font-size: 14px; font-weight: 600; color: var(--dlient-text-color-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dl-card-name-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.dl-card-version { font-size: 11px; color: var(--dlient-text-color-placeholder); font-family: "JetBrains Mono", ui-monospace, monospace; }
+.dl-unready-badge {
+  flex-shrink: 0;
+  display: flex;
+  height: 18px;
+  align-items: center;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--dlient-warning-color-1);
+  color: var(--dlient-warning-color-6);
+  font-size: 10px;
+  font-weight: 500;
+}
+.dl-card-unready { opacity: 0.72; }
+.dl-card-desc { margin-top: 10px; font-size: 12px; color: var(--dlient-text-color-secondary); 
+  /* white-space: nowrap; overflow: hidden; text-overflow: ellipsis; */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;          /* 限制显示行数 */
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  height: 40px;
+  line-height: 20px;
+ }
+
+/* 空状态（@dlient/ui Empty 外层容器） */
+.dl-empty-wrap { display: flex; height: 100%; align-items: center; justify-content: center; padding: 48px 32px; }
+
+/* 登录态 gating：layout 自身 loading / auth 插件宿主 */
+.dl-loading { display: flex; height: 100vh; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: var(--dlient-bg-color-page); color: var(--dlient-text-color-primary); }
+.dl-loading-logo { width: 44px; height: 44px; border-radius: 12px; animation: dl-pulse 1.4s ease-in-out infinite; }
+.dl-loading-text { font-size: 13px; color: var(--dlient-text-color-secondary); }
+@keyframes dl-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+.dl-auth-host { height: 100vh; overflow: hidden; }
+
+/* —— PluginBoot 启动页（NodeInstall 风格：520px 卡片 + 左侧状态图标 + 右侧标题/hint + 全宽按钮） —— */
+._layout-bot {
+  height: 100%;
+  overflow: auto;
+}
+._layout-bot-card {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  width: 520px;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 40px 24px;
+  box-sizing: border-box;
+  border-radius: 10px;
+}
+/* 检测中：居中 loading（lucide Loader2 无内置动画，手动补旋转） */
+._layout-bot-card--loading {
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+}
+._layout-bot-card--loading svg { animation: _layout-bot-spin 1s linear infinite; }
+._layout-bot-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+._layout-bot-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--dlient-text-color-primary);
+}
+._layout-bot-sub {
+  font-size: 11px;
+  color: var(--dlient-text-color-placeholder);
+}
+._layout-bot-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+._layout-bot-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  background-color: var(--dlient-bg-color-container-hover);
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+._layout-bot-step--installing {
+  border-color: var(--dlient-brand-color);
+  background-color: var(--dlient-bg-color-container-active);
+}
+._layout-bot-step-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  flex-shrink: 0;
+  font-size: 16px;
+}
+._layout-bot-step-icon--pending { color: var(--dlient-text-color-placeholder); }
+._layout-bot-step-icon--installing { color: var(--dlient-brand-color); }
+._layout-bot-step-icon--done { color: var(--dlient-success-color); }
+._layout-bot-step-icon--installing svg { animation: _layout-bot-spin 1s linear infinite; }
+@keyframes _layout-bot-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+._layout-bot-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+._layout-bot-step-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--dlient-text-color-primary);
+}
+._layout-bot-step-desc {
+  font-size: 11px;
+  color: var(--dlient-text-color-placeholder);
+}
+
+.dl-auth-view { height: 100%; }

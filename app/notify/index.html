@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data: dlientv3: file:; script-src 'unsafe-inline'; font-src 'self' data:">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>dlient · 通知</title>
+  <script>
+  (function () {
+    var m = 'auto';
+    try { m = localStorage.getItem('dlient-notify-theme') || 'auto'; } catch (e) {}
+    var dark = m === 'dark' || (m === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.classList.toggle('dark', dark);
+  })();
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+    body { width: 360px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; }
+
+    :root {
+      --card: #FFFFFF;
+      --card-border: #E4E4E8;
+      --card-shadow: 0 10px 26px rgba(15, 15, 25, 0.16);
+      --title: #1A1A1F;
+      --body: #3F3F4A;
+      --muted: #8A8A96;
+      --divider: #E4E4E8;
+      --accent: #7C6CF0;
+      --accent-text: #FFFFFF;
+      --input-bg: #F0F0F3;
+      --input-border: #D8D8DE;
+      --input-text: #1A1A1F;
+      --close-hover: rgba(15, 15, 25, 0.06);
+      --hover: rgba(15, 15, 25, 0.04);
+      --scrollbar: rgba(15, 15, 25, 0.18);
+    }
+    .dark {
+      --card: #26262C;
+      --card-border: #414149;
+      --card-shadow: 0 10px 26px rgba(0, 0, 0, 0.5);
+      --title: #FFFFFF;
+      --body: #C8C8D4;
+      --muted: #9E9EAD;
+      --divider: #2E2E36;
+      --accent: #7C6CF0;
+      --accent-text: #FFFFFF;
+      --input-bg: #383840;
+      --input-border: #4A4A54;
+      --input-text: #E6E6EB;
+      --close-hover: rgba(255, 255, 255, 0.08);
+      --hover: rgba(255, 255, 255, 0.06);
+      --scrollbar: rgba(255, 255, 255, 0.22);
+    }
+
+    #stack { display: flex; flex-direction: column; gap: 10px; padding: 12px; max-height: calc(100vh - 24px); overflow-y: auto; }
+    #stack::-webkit-scrollbar { width: 6px; }
+    #stack::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 3px; }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      box-shadow: var(--card-shadow);
+      overflow: hidden;
+    }
+    .card[hidden] { display: none; }
+    .head { display: flex; gap: 10px; align-items: flex-start; padding: 12px; cursor: pointer; user-select: none; background: transparent; border: 0; width: 100%; text-align: left; color: inherit; font: inherit; }
+    .head:hover { background: var(--hover); }
+    .icon { width: 36px; height: 36px; border-radius: 8px; object-fit: cover; flex: 0 0 auto; background: var(--input-bg); }
+    .icon[hidden] { display: none; }
+    .text { flex: 1 1 auto; min-width: 0; }
+    .title-row { display: flex; align-items: center; gap: 6px; }
+    .title { font-size: 14px; font-weight: 600; color: var(--title); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .badge { flex: 0 0 auto; font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 8px; background: var(--accent); color: var(--accent-text); }
+    .body { font-size: 13px; color: var(--body); margin-top: 3px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
+    .sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .close { flex: 0 0 auto; width: 22px; height: 22px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; font-size: 15px; line-height: 1; padding: 0; }
+    .close:hover { background: var(--close-hover); color: var(--title); }
+
+    .actions { display: flex; gap: 8px; padding: 0 12px 12px; flex-wrap: wrap; }
+    .btn { border: 1px solid var(--card-border); background: transparent; color: var(--title); border-radius: 8px; padding: 5px 12px; font-size: 13px; cursor: pointer; }
+    .btn:hover { background: var(--hover); }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+    .btn.primary:hover { opacity: 0.9; }
+    .reply-row { display: flex; gap: 6px; padding: 0 12px 12px; }
+    .reply-input { flex: 1 1 auto; border: 1px solid var(--input-border); background: var(--input-bg); color: var(--input-text); border-radius: 8px; padding: 6px 10px; font-size: 13px; outline: none; }
+    .reply-input:focus { border-color: var(--accent); }
+
+    .expanded { border-top: 1px solid var(--divider); padding: 4px 0; }
+    .expanded .item { padding: 8px 12px; }
+    .expanded .item + .item { border-top: 1px solid var(--divider); }
+    .expanded .item-title { font-size: 13px; font-weight: 600; color: var(--title); }
+    .expanded .item-body { font-size: 12px; color: var(--body); margin-top: 2px; white-space: pre-wrap; word-break: break-word; }
+    .expanded .item-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+    .expanded .item-close { flex: 0 0 auto; width: 20px; height: 20px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; padding: 0; }
+    .expanded .item-close:hover { background: var(--close-hover); color: var(--title); }
+  </style>
+</head>
+<body>
+  <main id="stack"></main>
+  <script>
+  (function () {
+    var stack = document.getElementById('stack');
+    var root = document.documentElement;
+    var groups = [];
+
+    function el(tag, cls, text) {
+      var n = document.createElement(tag);
+      if (cls) n.className = cls;
+      if (text !== undefined) n.textContent = text;
+      return n;
+    }
+
+    // 构造一张「组卡片」：头部（最后一条）+ actions/reply（最后一条）+ 展开列表（count>1）
+    function renderGroup(g) {
+      var last = g.items[g.items.length - 1];
+      var card = el('section', 'card');
+      card.dataset.gid = g.group_id;
+
+      var head = el('button', 'head');
+      var icon = el('img', 'icon');
+      if (last.icon) { icon.src = last.icon; icon.onerror = function () { icon.hidden = true; }; }
+      else icon.hidden = true;
+      head.appendChild(icon);
+
+      var text = el('div', 'text');
+      var titleRow = el('div', 'title-row');
+      var title = el('div', 'title', last.title || g.group_id);
+      titleRow.appendChild(title);
+      if (g.count > 1) titleRow.appendChild(el('span', 'badge', '+' + (g.count - 1)));
+      text.appendChild(titleRow);
+      if (last.body) text.appendChild(el('div', 'body', last.body));
+      if (last.subtitle) text.appendChild(el('div', 'sub', last.subtitle));
+      head.appendChild(text);
+
+      var close = el('button', 'close', '\u00d7');
+      close.title = 'close';
+      head.appendChild(close);
+
+      card.appendChild(head);
+
+      // 交互（最后一条）：actions + 回复框
+      if ((last.actions && last.actions.length) || last.hasReply) {
+        var actions = el('div', 'actions');
+        (last.actions || []).forEach(function (a, i) {
+          var b = el('button', 'btn', a.text);
+          b.addEventListener('click', function (ev) {
+            ev.stopPropagation();
+            window.dlientNotify.emit({ id: last.id, event: 'action', payload: { index: i } });
+          });
+          actions.appendChild(b);
+        });
+        if (last.hasReply) {
+          var row = el('div', 'reply-row');
+          var input = el('input', 'reply-input');
+          input.placeholder = last.replyPlaceholder || '';
+          var send = el('button', 'btn primary', 'send');
+          function submit() {
+            var t = input.value.trim();
+            if (!t) return;
+            window.dlientNotify.emit({ id: last.id, event: 'reply', payload: { reply: t } });
+            input.value = '';
+          }
+          send.addEventListener('click', function (ev) { ev.stopPropagation(); submit(); });
+          input.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.stopPropagation(); submit(); } });
+          row.appendChild(input);
+          row.appendChild(send);
+          actions.appendChild(row);
+        }
+        card.appendChild(actions);
+      }
+
+      // 折叠展开列表（count>1）：点击头部展开/收起逐条
+      if (g.count > 1) {
+        var expanded = el('div', 'expanded');
+        expanded.hidden = true;
+        g.items.forEach(function (it) {
+          var item = el('div', 'item');
+          var row = el('div', 'item-row');
+          var box = el('div');
+          box.appendChild(el('div', 'item-title', it.title));
+          if (it.body) box.appendChild(el('div', 'item-body', it.body));
+          row.appendChild(box);
+          var ic = el('button', 'item-close', '\u00d7');
+          ic.addEventListener('click', function (ev) {
+            ev.stopPropagation();
+            window.dlientNotify.emit({ id: it.id, event: 'close' });
+          });
+          row.appendChild(ic);
+          item.appendChild(row);
+          expanded.appendChild(item);
+        });
+        card.appendChild(expanded);
+        head.addEventListener('click', function (ev) {
+          if (ev.target === close || ev.target === ic) return;
+          if (expanded.hidden) {
+            expanded.hidden = false;
+            emitResize();
+          } else {
+            expanded.hidden = true;
+            emitResize();
+          }
+        });
+      }
+
+      // 点击头部主体（非 close）→ click 事件（最后一条）
+      head.addEventListener('click', function (ev) {
+        if (ev.target === close) return;
+        window.dlientNotify.emit({ id: last.id, event: 'click' });
+      });
+      close.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        window.dlientNotify.emit({ id: last.id, event: 'close' });
+      });
+
+      return card;
+    }
+
+    function render(payload) {
+      groups = payload.groups || [];
+      stack.textContent = '';
+      groups.forEach(function (g) {
+        var card = renderGroup(g);
+        stack.appendChild(card);
+      });
+      emitResize();
+    }
+
+    var lastTheme = null;
+    function applyTheme(theme) {
+      if (theme === lastTheme) return;
+      lastTheme = theme;
+      root.classList.toggle('dark', theme === 'dark');
+      try { localStorage.setItem('dlient-notify-theme', theme === 'dark' ? 'dark' : 'light'); } catch (e) {}
+    }
+
+    // 内容高度上报：主进程据此 setBounds（宽度固定 360，高度自适应收敛）
+    var rafPending = false;
+    function emitResize() {
+      if (rafPending) return;
+      rafPending = true;
+      requestAnimationFrame(function () {
+        rafPending = false;
+        window.dlientNotify.resize(stack.scrollHeight + 2);
+      });
+    }
+
+    window.dlientNotify.onSet(function (payload) {
+      applyTheme(payload.theme);
+      render(payload);
+    });
+
+    // 初始渲染后持续观察（图标加载、展开/收起、回复框等都会改变高度）
+    new ResizeObserver(function () { emitResize(); }).observe(stack);
+
+    window.dlientNotify.ready();
+  })();
+  </script>
+</body>
+</html>

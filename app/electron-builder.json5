@@ -1,0 +1,60 @@
+// @see - https://www.electron.build/configuration/configuration
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "desktop.dlient.com",
+  "asar": true,
+  "compression": "maximum",
+  "productName": "Dlient V3",
+  "directories": {
+    "output": "release/${version}"
+  },
+  "extraResources": [
+    { "from": "build/icon.png", "to": "icon.png" }
+  ],
+  "files": [
+    "dist/index.html",
+    "dist/icon.png",
+    "dist/logo.svg",
+    "dist/assets/**",
+    "dist-electron",
+    "dialog",
+    "build/icon.png",
+    "!dist/win-unpacked/**",
+    "!dist/builder-*",
+    "!dist/__uninstaller*",
+    "!dist/*.exe",
+    "!dist/*.yml",
+    "!dist/icon.png"
+  ],
+  "mac": {
+    "target": [
+      "dmg"
+    ],
+    "artifactName": "${productName}-Mac-${version}-Installer.${ext}"
+  },
+  "win": {
+    "icon": "build/icon.png",
+    "executableName": "DlientV3",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "artifactName": "${productName}-Windows-${version}-Setup.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false
+  },
+  "linux": {
+    "target": [
+      "AppImage"
+    ],
+    "artifactName": "${productName}-Linux-${version}.${ext}"
+  }
+}

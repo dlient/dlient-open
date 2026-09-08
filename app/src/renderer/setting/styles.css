@@ -1,0 +1,196 @@
+/* plugin-setting 样式：基于宿主 tokens.css 的 --dlient-* 语义变量（亮/暗随宿主 .dark class 切换；
+   --dl-fill-* 为宿主 index.css 自有填充色，此处直接引用）。按钮 / 弹框 / 浮层等组件由 @dlient/ui primitives 提供。
+   布局类名沿用；品牌紫仅用于头像渐变（引用 --dlient-brand-color*），其余颜色跟随 --dlient-* 变量。 */
+
+.st-root {
+  min-height: 100%;
+  color: var(--dlient-text-color-primary);
+  font-family: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+.st-page {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: var(--dlient-size-6) var(--dlient-size-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--dlient-size-5);
+}
+.st-header { display: flex; flex-direction: column; gap: var(--dlient-size-2); }
+.st-title { margin: 0; font-size: var(--dlient-font-size-display); font-weight: 700; color: var(--dlient-text-color-primary); }
+.st-subtitle { margin: 0; font-size: var(--dlient-font-size-body); color: var(--dlient-text-color-secondary); }
+
+/* 账户信息卡片 */
+.st-account {
+  display: flex;
+  align-items: center;
+  gap: var(--dlient-size-4);
+  border: 1px solid var(--dlient-component-stroke-color);
+  border-radius: var(--dlient-radius-large);
+  background: var(--dl-fill-0);
+  padding: var(--dlient-size-5) var(--dlient-size-6);
+}
+.st-avatar {
+  flex-shrink: 0;
+  width: var(--dlient-size-13);
+  height: var(--dlient-size-13);
+  border-radius: var(--dlient-radius-circle);
+  background: linear-gradient(135deg, var(--dlient-brand-color), var(--dlient-brand-color-hover));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dlient-text-color-anti);
+  font-size: var(--dlient-font-size-title);
+  font-weight: 600;
+  overflow: hidden;
+}
+.st-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.st-account-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--dlient-size-1); }
+.st-account-name { font-size: var(--dlient-font-size-body-large); font-weight: 600; color: var(--dlient-text-color-primary); }
+.st-account-sub { font-size: var(--dlient-font-size-caption); color: var(--dlient-text-color-placeholder); }
+
+/* 通用 section 卡片 */
+.st-section {
+  border: 1px solid var(--dlient-component-stroke-color);
+  border-radius: var(--dlient-radius-large);
+  background: var(--dl-fill-0);
+  padding: var(--dlient-size-4) var(--dlient-size-6) var(--dlient-size-2);
+}
+.st-section-head { display: flex; flex-direction: column; gap: var(--dlient-size-1); }
+.st-section-title { margin: 0; font-size: var(--dlient-font-size-body-large); font-weight: 600; color: var(--dlient-text-color-primary); }
+.st-section-sub { margin: 0; font-size: var(--dlient-font-size-caption); color: var(--dlient-text-color-placeholder); }
+.st-hr { height: 1px; margin: var(--dlient-size-3) 0; background: var(--dlient-component-stroke-color); }
+
+.st-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dlient-size-4);
+  padding: var(--dlient-size-3) 0;
+}
+.st-row-label { display: flex; flex-direction: column; gap: var(--dlient-size-1); }
+.st-row-title { font-size: var(--dlient-font-size-body); font-weight: 500; color: var(--dlient-text-color-primary); }
+.st-row-sub { font-size: var(--dlient-font-size-caption); color: var(--dlient-text-color-placeholder); }
+
+/* 快捷键 */
+.st-shortcut-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.st-shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--dlient-size-3);
+  background-color: var(--dlient-bg-color-container);
+  border: 1px solid transparent;
+  border-radius: var(--dlient-radius-medium);
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.st-shortcut-row:hover { background: var(--dlient-brand-color-1); }
+/* 录制中：高亮边框 + 背景，提示当前正在修改该快捷键 */
+.st-shortcut-row.st-recording {
+  border-color: var(--dlient-brand-color);
+  background: var(--dlient-brand-color-1);
+}
+.st-shortcut-label { font-size: var(--dlient-font-size-body); color: var(--dlient-text-color-primary); }
+.st-shortcut-ctrl { display: flex; align-items: center; gap: var(--dlient-size-2); }
+.st-keycap {
+  display: flex;
+  align-items: center;
+  height: var(--dlient-size-6);
+  box-sizing: border-box;
+  padding: 0 var(--dlient-size-2);
+  border: 1px solid var(--dlient-border-level-2-color);
+  border-radius: var(--dlient-radius-small);
+  background: var(--dlient-bg-color-container);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: var(--dlient-font-size-caption);
+  color: var(--dlient-text-color-secondary);
+}
+.st-recording-hint { font-size: var(--dlient-font-size-caption); color: var(--dlient-brand-color); white-space: nowrap; }
+.st-shortcut-tip { margin: 0; padding: var(--dlient-size-3) 0 var(--dlient-size-2); font-size: var(--dlient-font-size-caption); color: var(--dlient-text-color-placeholder); }
+
+/* 设备管理 */
+.st-devices-empty { margin: 0; padding: var(--dlient-size-3) 0; font-size: var(--dlient-font-size-caption); color: var(--dlient-text-color-placeholder); }
+.st-device-list { display: flex; flex-direction: column; gap: var(--dlient-size-2); padding-bottom: var(--dlient-size-3); }
+.st-device-item {
+  display: flex;
+  align-items: center;
+  gap: var(--dlient-size-3);
+  padding: var(--dlient-size-3);
+  border-radius: var(--dlient-radius-medium);
+  background: var(--dlient-bg-color-container);
+}
+.st-device-current { border-color: var(--dlient-brand-color-2); }
+.st-device-icon {
+  flex-shrink: 0;
+  display: flex;
+  width: var(--dlient-size-9);
+  height: var(--dlient-size-9);
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--dlient-radius-medium);
+  background: var(--dlient-bg-color-container-hover);
+  color: var(--dlient-text-color-secondary);
+}
+.st-device-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--dlient-size-1); }
+.st-device-name {
+  display: flex;
+  align-items: center;
+  gap: var(--dlient-size-2);
+  font-size: var(--dlient-font-size-body);
+  font-weight: 600;
+  color: var(--dlient-text-color-primary);
+}
+.st-device-tag {
+  display: flex;
+  height: var(--dlient-size-5);
+  align-items: center;
+  padding: 0 var(--dlient-size-2);
+  border-radius: var(--dlient-radius-round);
+  background: var(--dlient-brand-color);
+  color: var(--dlient-text-color-anti);
+  font-size: var(--dlient-font-size-caption);
+  font-weight: 500;
+  font-style: normal;
+}
+.st-device-sub {
+  font-size: var(--dlient-font-size-caption);
+  color: var(--dlient-text-color-placeholder);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.st-device-msg { margin: 0; font-size: var(--dlient-font-size-body); line-height: 1.7; color: var(--dlient-text-color-secondary); }
+
+/* 账号绑定弹框列表（modal.dialog body） */
+.st-bind-row {
+  display: flex;
+  align-items: center;
+  gap: var(--dlient-size-3);
+  /* padding: var(--dlient-size-3); */
+  /* border-radius: var(--dlient-radius-medium); */
+  /* background: var(--dlient-bg-color-container); */
+}
+.st-bind-icon {
+  flex-shrink: 0;
+  display: flex;
+  width: var(--dlient-comp-size-l);
+  height: var(--dlient-comp-size-l);
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--dlient-radius-medium);
+  background: var(--dlient-bg-color-container-hover);
+  color: var(--dlient-text-color-primary);
+}
+.st-bind-meta { flex: 1; min-width: 0; display: flex; flex-direction: column;  }
+.st-bind-name { font-size: var(--dlient-font-size-body); font-weight: 600; color: var(--dlient-text-color-primary); }
+.st-bind-sub {
+  font-size: var(--dlient-font-size-caption);
+  color: var(--dlient-text-color-placeholder);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

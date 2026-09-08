@@ -1,0 +1,30 @@
+{
+    "name":  "@dlient-open/api-bridge",
+    "version":  "4.0.2",
+    "private":  false,
+    "main":  "./dist/index.mjs",
+    "types":  "./dist/index.d.ts",
+    "exports":  {
+                    ".":  {
+                              "types":  "./dist/index.d.ts",
+                              "import":  "./dist/index.mjs"
+                          }
+                },
+    "files":  [
+                  "dist"
+              ],
+    "dependencies":  {
+                         "@dlient-open/api-types":  "*"
+                     },
+    "scripts":  {
+                    "build":  "vite build \u0026\u0026 tsc -p tsconfig.json"
+                },
+    "peerDependencies":  {
+                             "react":  "18.3.1"
+                         },
+    "devDependencies":  {
+                            "@types/react":  "^18.2.0",
+                            "typescript":  "^5.4.0",
+                            "vite":  "^5.1.6"
+                        }
+}

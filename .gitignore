@@ -1,0 +1,15 @@
+# 开源版（dlient-open）根目录
+# 子目录 app/.gitignore 已覆盖 node_modules / dist / dist-electron / release 等；此处补充根级产物。
+
+# 冒烟测试临时数据
+.smoke-data/
+
+# 编辑器 / 系统
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.sw?
+
+# 日志
+*.log

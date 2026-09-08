@@ -1,0 +1,145 @@
+/* 宿主全局基础样式（布局 + 暗色滚动条 + 主题品牌覆盖）。
+   组件样式由 @dlient-open/ui primitives 自动注入，设计变量统一取 tokens.css 的 --dlient-*。 */
+
+body {
+  height: 100vh;
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+button{
+  outline: none;
+}
+
+/* ===== 滚动条（统一，亮暗共用结构）=====
+   亮/暗两主题共用同一套滚动条：常显、无箭头、6px。
+   thumb 颜色用 CSS 变量随主题切换（暗色滚动条必须保持暗色，勿覆写回浅色）。
+   宿主与所有插件共享渲染进程，此处对全部滚动条生效（含 html 自身滚动条）。 */
+:root {
+  /* 滚动条 / 旧填充别名统一指向 tokens.css：scrollbar 与 --dl-fill-* 均随主题自动切换 */
+  --dl-scrollbar-thumb: var(--dlient-scrollbar-color);
+  --dl-scrollbar-thumb-hover: var(--dlient-scrollbar-hover-color);
+  --dl-fill-0: var(--dlient-color-fill-0);
+  --dl-fill-1: var(--dlient-color-fill-1);
+  --dl-fill-2: var(--dlient-color-fill-2);
+}
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--dl-scrollbar-thumb);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--dl-scrollbar-thumb-hover);
+}
+::-webkit-scrollbar-button {
+  display: none; /* 去掉 Windows 经典上下箭头，亮暗一致 */
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ===== 宿主壳（Shell）===== */
+
+/* 启动页：居中品牌 + 进度 */
+.shell-startup {
+  position: relative;
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--dlient-bg-color-page);
+  color: var(--dlient-text-color-primary);
+}
+
+.shell-glow {
+  position: absolute;
+  border-radius: 9999px;
+  pointer-events: none;
+}
+.shell-glow-left {
+  width: 720px;
+  height: 720px;
+  left: -300px;
+  top: -380px;
+  background: radial-gradient(circle, rgba(124, 108, 240, 0.16) 0%, rgba(124, 108, 240, 0) 70%);
+}
+.shell-glow-right {
+  width: 520px;
+  height: 520px;
+  right: -160px;
+  bottom: -140px;
+  background: radial-gradient(circle, rgba(43, 201, 240, 0.1) 0%, rgba(43, 201, 240, 0) 70%);
+}
+
+.shell-logo {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12);
+}
+
+.shell-brand {
+  position: relative;
+  margin: 16px 0 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--dlient-text-color-primary);
+}
+
+.shell-stage {
+  position: relative;
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--dlient-text-color-secondary);
+}
+
+.shell-stage-detail {
+  color: #e5484d;
+}
+
+.shell-retry {
+  position: relative;
+  margin-top: 16px;
+  padding: 6px 24px;
+  border-radius: 6px;
+  border: 1px solid var(--dlient-component-stroke, rgba(0, 0, 0, 0.15));
+  background: var(--dlient-brand-color, #0052d9);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* 主界面：插件布局占满 */
+.shell-main {
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background: var(--background);
+  color: var(--foreground);
+}
+.shell-view {
+  height: 100%;
+  width: 100%;
+}
+
+/* ===== 品牌主色（brand-default）=====
+   品牌色统一由 tokens.css 的 --dlient-color-primary*（亮/暗各一套）驱动，
+   不再在 body 覆写，避免覆盖 .dark 暗色别名与主题切换。 */
