@@ -7,13 +7,29 @@
  * 变更组件 className 后需重跑本脚本（npm run build:css），再执行 vite build。
  */
 import { spawnSync } from 'node:child_process'
-import { statSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, statSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const dir = fileURLToPath(new URL('..', import.meta.url))
 const inputPath = `${dir}src/styles/base.css`
 const outputPath = `${dir}src/styles/ui.css`
-const bin = process.platform === 'win32' ? `${dir}node_modules\\.bin\\tailwindcss.cmd` : `${dir}node_modules/.bin/tailwindcss`
+
+/** workspace 依赖提升到仓库根 node_modules：本地 .bin 不存在时逐级向上查找 tailwindcss */
+function findTailwindBin() {
+  const exe = process.platform === 'win32' ? 'tailwindcss.cmd' : 'tailwindcss'
+  let cur = dir
+  for (;;) {
+    const probe = join(cur, 'node_modules', '.bin', exe)
+    if (existsSync(probe)) return probe
+    const parent = dirname(cur)
+    if (parent === cur) break
+    cur = parent
+  }
+  throw new Error('build-css: tailwindcss binary not found (install @tailwindcss/cli)')
+}
+
+const bin = findTailwindBin()
 
 const r = spawnSync(bin, ['-i', inputPath, '-o', outputPath, '--minify'], { stdio: 'inherit', cwd: dir, shell: process.platform === 'win32' })
 if (r.status !== 0) process.exit(r.status ?? 1)
