@@ -65,6 +65,35 @@ export default function App() {
     return off
   }, [viewId, applyThemeToWebview])
 
+  // 宿主语言/主题 → dsh settings.yaml 同步（worker 写文件，dsh 页面自动刷新）：
+  // 初始下发一次当前外观；此后监听宿主 language / theme 广播实时下发。
+  const pushAppearance = useCallback(
+    (language: string, dark: boolean) => {
+      void api.request('dsh.applyAppearance', [language, dark]).catch(() => undefined)
+    },
+    [api],
+  )
+  useEffect(() => {
+    let lang = typeof locale === 'string' && locale ? locale : 'en-US'
+    let dark = darkRef.current
+    void pushAppearance(lang, dark)
+    const offLang = window.dlient.on('language', (l) => {
+      if (typeof l === 'string' && l) {
+        lang = l
+        void pushAppearance(lang, dark)
+      }
+    })
+    const offTheme = window.dlient.on('theme', (theme) => {
+      dark = theme === 'dark'
+      darkRef.current = dark
+      void pushAppearance(lang, dark)
+    })
+    return () => {
+      offLang()
+      offTheme()
+    }
+  }, [locale, pushAppearance])
+
   const handleViewReady = useCallback((id: string) => setViewId(id), [])
 
   // 页面加载完成后 body 一定就绪，再应用一次（覆盖初始注入时页面尚未加载的情况）

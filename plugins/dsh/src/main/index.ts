@@ -12,7 +12,8 @@
 import { createWorkerRpc } from '@dlient-open/plugin-sdk'
 import type { ChildHandle } from '@dlient-open/plugin-sdk'
 import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { readFile, unlink, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 const rpc = createWorkerRpc('dsh')
@@ -66,6 +67,99 @@ let current: DshStatus = { phase: 'idle' }
 function pushStatus(s: DshStatus): void {
   current = s
   rpc.push('dsh.status', s)
+}
+
+// ---- dsh settings.yaml 宿主外观接管（备份 settings.dlient.yaml，关闭时还原）----
+// dsh web 的界面语言/主题由 ~/.dsh/settings.yaml 的 locale.preference / ui-theme.preference 决定；
+// 宿主语言/主题变化时改写该文件（dsh 页面会自动刷新），并在插件停用/退出时还原用户原配置。
+const DSH_HOME = process.env.DSH_HOME ? process.env.DSH_HOME : join(homedir(), '.dsh')
+const DSH_SETTINGS_FILE = join(DSH_HOME, 'settings.yaml')
+const DSH_SETTINGS_BACKUP = join(DSH_HOME, 'settings.dlient.yaml')
+
+/** 记录渲染端最近一次下发的宿主外观（applyAppearance 更新；start 时据此同步） */
+let appearanceDesired: { locale?: string; dark?: boolean } = {}
+
+/** 简单 YAML 叶子替换：把 <section> 块内首个 `preference:` 叶子改为指定值；返回新文本或 null */
+function replaceYamlLeaf(text: string, section: string, value: string): string | null {
+  const nl = text.includes('\r\n') ? '\r\n' : '\n'
+  const lines = text.split(/\r?\n/)
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim() !== `${section}:`) continue
+    const indent = lines[i].length - lines[i].trimStart().length
+    const childPad = ' '.repeat(indent + 2)
+    for (let j = i + 1; j < lines.length; j++) {
+      const raw = lines[j]
+      const trimmed = raw.trim()
+      if (trimmed === '') continue
+      if (raw.length - raw.trimStart().length <= indent) break // 离开该顶层 section
+      if (/^preference\s*:/.test(trimmed)) {
+        lines[j] = `${childPad}preference: ${value}`
+        return lines.join(nl)
+      }
+    }
+    break
+  }
+  return null
+}
+
+/** settings.yaml 文件操作串行队列（避免并发写冲突） */
+let settingsChain: Promise<unknown> = Promise.resolve()
+function runSettingsTask<T>(fn: () => Promise<T>): Promise<T> {
+  const p = settingsChain.then(fn, fn)
+  settingsChain = p.catch(() => undefined)
+  return p
+}
+
+/**
+ * 按宿主外观同步 settings.yaml（locale/theme）。
+ * - 与宿主一致时不改动；确实要改时先备份原文件（仅首次，settings.dlient.yaml）。
+ */
+async function syncDshAppearance(desired: { locale?: string; dark?: boolean }): Promise<{ ok: boolean; changed: boolean }> {
+  return runSettingsTask(async () => {
+    let original: string
+    try {
+      original = await readFile(DSH_SETTINGS_FILE, 'utf-8')
+    } catch {
+      return { ok: true, changed: false } // 无 settings.yaml：不创建，跳过
+    }
+    const dshLocale = desired.locale === 'zh-CN' ? 'zh' : desired.locale === 'en-US' ? 'en' : undefined
+    const dshTheme = typeof desired.dark === 'boolean' ? desired.dark ? 'dark' : 'light' : undefined
+    let next = original
+    let changed = false
+    if (dshLocale) {
+      const r = replaceYamlLeaf(next, 'locale', dshLocale)
+      if (r !== null) {
+        if (r !== next) changed = true
+        next = r
+      }
+    }
+    if (dshTheme) {
+      const r = replaceYamlLeaf(next, 'ui-theme', dshTheme)
+      if (r !== null) {
+        if (r !== next) changed = true
+        next = r
+      }
+    }
+    if (!changed) return { ok: true, changed: false }
+    // 仅当尚无备份时落一份原始配置（首次接管前的用户基线）
+    if (!existsSync(DSH_SETTINGS_BACKUP)) await writeFile(DSH_SETTINGS_BACKUP, original, 'utf-8')
+    await writeFile(DSH_SETTINGS_FILE, next, 'utf-8')
+    return { ok: true, changed: true }
+  })
+}
+
+/** 还原 settings.yaml（dsh 停止/退出时）：从备份写回并删除备份，下次接管重新锚定基线 */
+async function restoreDshSettings(): Promise<void> {
+  await runSettingsTask(async () => {
+    try {
+      if (!existsSync(DSH_SETTINGS_BACKUP)) return
+      const backup = await readFile(DSH_SETTINGS_BACKUP, 'utf-8')
+      await writeFile(DSH_SETTINGS_FILE, backup, 'utf-8')
+      await unlink(DSH_SETTINGS_BACKUP).catch(() => undefined)
+    } catch {
+      /* 还原失败不抛（进程退出阶段尽力而为） */
+    }
+  })
 }
 
 /**
@@ -265,9 +359,31 @@ async function startDsh(node: string, port: number): Promise<{ url: string }> {
 
 // ---- 对外方法（渲染端 api.request / 其它插件 plugin.invoke）----
 
+/** 宿主外观下发（渲染端在语言/主题变化与启动时调用）：记录并同步 settings.yaml */
+rpc.registerHandler('dsh.applyAppearance', async ([language, dark]: [language?: string, dark?: boolean]) => {
+  appearanceDesired = {
+    locale: typeof language === 'string' ? language : undefined,
+    dark: typeof dark === 'boolean' ? dark : undefined,
+  }
+  const r = await syncDshAppearance(appearanceDesired)
+  return { ok: true, changed: r.changed }
+})
+
+/** 还原 dsh 用户 settings.yaml（渲染端在显式停止时调用；退出时另有 onDispose 兜底） */
+rpc.registerHandler('dsh.restoreAppearance', async () => {
+  await restoreDshSettings()
+  return { ok: true }
+})
+
 rpc.registerHandler('dsh.start', async () => {
   if (child) return { ok: true, url: current.url }
   try {
+    // 启动前按最近下发的宿主外观同步 settings.yaml（dsh 页面启动即用目标语言/主题）
+    try {
+      await syncDshAppearance(appearanceDesired)
+    } catch {
+      /* settings 同步失败不阻塞启动 */
+    }
     // 分配空闲端口供 dsh web 监听（--port）。旧端口残留无需清理：每次新分配空闲端口，
     // 且 dsh web 由宿主代管，worker/宿主退出时宿主整树回收，不会遗留占端口进程。
     const port = await getFreePort()
@@ -294,11 +410,22 @@ rpc.registerHandler('dsh.stop', async () => {
   child = null
   // 宿主代管句柄：kill = 整树回收（taskkill /T 或进程组 SIGKILL），无残留兜底需求
   await handle?.kill()
+  // 停止后还原用户 settings.yaml（备份基线）
+  try {
+    await restoreDshSettings()
+  } catch {
+    /* 还原失败不阻塞 */
+  }
   pushStatus({ phase: 'idle', startedOnce: true })
   return { ok: true }
 })
 
 rpc.registerHandler('dsh.status', () => current)
+
+// 进程退出兜底：worker 被宿主回收（应用退出/插件停止）时还原用户 settings.yaml
+rpc.onDispose(() => {
+  void restoreDshSettings()
+})
 
 // dsh web 由宿主代管（child.spawn + owner 登记）：worker 退出/崩溃 → 宿主 killChildrenByOwner 整树回收，
 // 无需 worker 侧 exit/signal 清理（旧 PID 文件 + netstat/taskkill 机制已删）。
