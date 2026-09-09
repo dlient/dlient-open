@@ -10,7 +10,6 @@ npx @dlient-open/create-plugin my-plugin --name "我的插件"   # 指定显示�
 npx @dlient-open/create-plugin my-plugin --dir ~/dev        # 指定创建目录
 npx @dlient-open/create-plugin my-plugin --native-host      # 原生模块（native-host 模式：官方 Node 子进程，免 rebuild）
 npx @dlient-open/create-plugin my-plugin --native           # 原生模块（vendor + @electron/rebuild，逐平台构建）
-npx @dlient-open/create-plugin my-plugin --port 5300        # 指定 dev server 端口（缺省按插件 id 派生）
 ```
 
 默认**不执行 npm install、不创建 git 仓库**；创建后进入插件目录自行安装/初始化。

@@ -8,7 +8,6 @@
  *   npx @dlient-open/create-plugin my-plugin --dir ~/dev       # 指定创建目录
  *   npx @dlient-open/create-plugin my-plugin --native-host     # 原生模块（native-host 模式，官方 Node 子进程）
  *   npx @dlient-open/create-plugin my-plugin --native          # 原生模块（vendor + @electron/rebuild，逐平台构建）
- *   npx @dlient-open/create-plugin my-plugin --port 5300       # 指定 dev server 端口（缺省按插件 id 派生）
  *
  * 默认不执行 npm install、不创建 git 仓库（生成后可进入插件目录自行安装/初始化）。
  *
@@ -31,7 +30,7 @@ const SKIP_DIRS = new Set(['node_modules', 'dist', '.git'])
 
 // ---- 参数解析 ----
 const args = process.argv.slice(2)
-const opts = { dir: process.cwd(), native: false, nativeHost: false, port: null, name: '' }
+const opts = { dir: process.cwd(), native: false, nativeHost: false, name: '' }
 let id = ''
 for (let i = 0; i < args.length; i++) {
   const a = args[i]
@@ -39,7 +38,6 @@ for (let i = 0; i < args.length; i++) {
   else if (a === '--name') opts.name = String(args[++i] ?? '')
   else if (a === '--native-host') { opts.nativeHost = true; opts.native = true }
   else if (a === '--native') opts.native = true
-  else if (a === '--port') opts.port = Number(args[++i])
   // 兼容参数（闭源版 dev-tools 创建流程会附带；开源版无 dev-tools，空操作保留以兼容）
   else if (a === '--skip-install' || a === '--no-git') { /* no-op */ }
   else if (a.startsWith('-')) { console.error(`未知参数: ${a}`); process.exit(1) }
@@ -49,7 +47,7 @@ for (let i = 0; i < args.length; i++) {
 
 // ---- 校验 ----
 if (!id) {
-  console.error('用法: create-plugin <插件id> [--name 显示名] [--dir 目录] [--native-host|--native] [--port 端口]')
+  console.error('用法: create-plugin <插件id> [--name 显示名] [--dir 目录] [--native-host|--native]')
   process.exit(1)
 }
 if (!/^[a-z][a-z0-9-]*$/.test(id)) {
@@ -57,10 +55,6 @@ if (!/^[a-z][a-z0-9-]*$/.test(id)) {
   process.exit(1)
 }
 const name = opts.name || id
-if (opts.port !== null && (!Number.isInteger(opts.port) || opts.port <= 0 || opts.port > 65535)) {
-  console.error(`端口不合法: ${opts.port}`)
-  process.exit(1)
-}
 if (!existsSync(TEMPLATE_DIR)) {
   console.error(`未找到模板: ${TEMPLATE_DIR}\n请先运行: npm run prepare:templates`)
   process.exit(1)
@@ -173,7 +167,7 @@ function replacePlaceholders(root, replacements) {
   walk(root)
 }
 
-/** 按参数改写生成插件的 package.json manifest（图标 / 原生模块 / devPort） */
+/** 按参数改写生成插件的 package.json manifest（图标 / 原生模块） */
 function applyManifestOptions(root, opts, id) {
   const pkgPath = join(root, 'package.json')
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'))
@@ -183,8 +177,6 @@ function applyManifestOptions(root, opts, id) {
 
   // 图标：固定 assets/icon.svg（assembleAssets 已按插件 id 首字母生成该图标）
   dlient.icon = 'assets/icon.svg'
-
-  if (opts.port !== null) dlient.devPort = opts.port
 
   if (opts.nativeHost) {
     // 路径 B：native-host 模式（官方 Node 子进程承载原生模块，免 @electron/rebuild）
