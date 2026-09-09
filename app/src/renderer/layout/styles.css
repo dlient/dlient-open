@@ -196,13 +196,11 @@
 .dl-import-perm { display: flex; flex-direction: column; gap: 3px; padding: 7px 10px; font-size: 13px; line-height: 1.5; text-align: left; }
 .dl-import-perm + .dl-import-perm { border-top: 1px solid var(--dlient-component-stroke-color); }
 .dl-import-perm-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
-/* 风险色标：default 灰点 / warn 橙点 / dangerous 红点；warn+ 显示警示图标 */
+/* 风险色标：default 灰点 / warn 橙点 / dangerous 红点 */
 .dl-import-risk-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .dl-import-risk-dot--default { background: var(--dlient-color-text-3); }
 .dl-import-risk-dot--warn { background: var(--dlient-warning-color-6); }
 .dl-import-risk-dot--dangerous { background: var(--dlient-error-color-6); }
-.dl-import-risk-icon { flex-shrink: 0; color: var(--dlient-warning-color-6); }
-.dl-import-perm--dangerous .dl-import-risk-icon { color: var(--dlient-error-color-6); }
 .dl-import-perm-key { font-size: 12px; font-weight: 600; color: var(--dlient-brand-color); word-break: break-all; }
 .dl-import-perm--warn .dl-import-perm-key { color: var(--dlient-warning-color-6); }
 .dl-import-perm--dangerous .dl-import-perm-key { color: var(--dlient-error-color-6); }
