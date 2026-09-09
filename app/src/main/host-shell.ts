@@ -19,7 +19,7 @@ import { getWindowController, popupNativeMenu } from './lib/app'
 import { webviewSetActivePlugin } from './lib/webview'
 import { checkBundled, checkLocal, getNodejsProgress, installNodejs, resolveRuntime, withNpmRegistry } from './nodejs'
 import { upsertInstalledEntry, removeInstalledEntry, type InstalledPluginEntry } from './installed-registry'
-import { listPluginCapabilities } from './lib/plugin'
+import { listPluginCapabilities, registerPluginImportProvider } from './lib/plugin'
 import { broadcastAppSetting, useSystemNativeTheme } from './lib/theme'
 import { atomicWriteFile, withFileLock } from './file-queue'
 
@@ -210,6 +210,8 @@ export function registerHostShell(deps: HostShellDeps): void {
   handle('install-import-plugin', (filePath: unknown) =>
     typeof filePath === 'string' && filePath.length > 0 ? installImportFrom(filePath) : { ok: false, error: 'missing import file' },
   )
+  // plugin.install host-api 提供方：复用 .dlient 深度安装核心（同源：文件 / npm / github / URL）
+  registerPluginImportProvider((req) => pluginInstallFromRequest(req))
 
   // 卸载（layout 右侧菜单「卸载」；移除目录 + 注册表 + 缓存 + 广播）
   handle('uninstall-plugin', async (pluginId: unknown) => {
@@ -861,4 +863,60 @@ async function installPackageFile(filePath: string, visited: Set<string>): Promi
 /** install：执行导入（深度安装依赖 + 解包落盘 → 原生模块 → 注册表 → 上报 → 广播）；filePath 来自 preview 确认 */
 async function installImportFrom(filePath: string): Promise<ImportResult> {
   return installPackageFile(filePath, new Set<string>())
+}
+
+// ---- plugin.install host-api（插件可见安装入口；复用 installPackageFile 深度安装核心）----
+
+/** 自动判定安装源类型（无 scheme → npm；github.com → github；其它 http(s) → url 直下） */
+function detectInstallSourceKind(source: string): 'npm' | 'github' | 'url' {
+  if (/^https?:\/\//i.test(source)) {
+    try {
+      const host = new URL(source).hostname.toLowerCase()
+      if (host === 'github.com' || host.endsWith('.github.com')) return 'github'
+    } catch {
+      /* 非法 URL 按 npm */
+    }
+    return 'url'
+  }
+  return 'npm'
+}
+
+/** 解析 npm 引用 '<pkg>@<spec>'（含 scoped '@scope/name@ver'）；无版本视为 latest */
+function parseNpmRef(ref: string): { name: string; spec: string } {
+  const at = ref.lastIndexOf('@')
+  if (at > 0) return { name: ref.slice(0, at), spec: ref.slice(at + 1) }
+  return { name: ref, spec: 'latest' }
+}
+
+/** plugin.install 实现：kind 可选自动判定；file 显式走本地 .dlient 路径 */
+async function pluginInstallFromRequest(req: {
+  kind?: 'file' | 'npm' | 'github' | 'url'
+  id?: string
+  source: string
+}): Promise<ImportResult> {
+  const source = typeof req?.source === 'string' ? req.source.trim() : ''
+  if (!source) return { ok: false, error: 'plugin.install: source required' }
+  const kind = req?.kind ?? detectInstallSourceKind(source)
+  try {
+    if (kind === 'file') {
+      // 本地 .dlient 路径（无临时文件，无需清理）
+      return await installPackageFile(source, new Set<string>())
+    }
+    let tmpPath: string
+    if (kind === 'github') tmpPath = await resolveGithubDepToFile(source)
+    else if (kind === 'url') tmpPath = await resolveUrlDepToFile(source)
+    else {
+      const npmId = typeof req.id === 'string' && req.id.trim() !== '' ? req.id.trim() : null
+      const name = npmId ?? parseNpmRef(source).name
+      const spec = npmId ? source : parseNpmRef(source).spec
+      tmpPath = await resolveNpmDepToFile(name, spec)
+    }
+    try {
+      return await installPackageFile(tmpPath, new Set<string>())
+    } finally {
+      await rm(dirname(tmpPath), { recursive: true, force: true }).catch(() => undefined)
+    }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
 }

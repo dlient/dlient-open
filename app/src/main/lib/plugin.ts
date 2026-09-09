@@ -66,6 +66,34 @@ export function registerPluginInstaller(h: PluginInstallerLike | null): void {
   installer = h
 }
 
+// ---- 插件安装提供方（host-shell 注册：plugin.install 复用 .dlient 深度安装引擎）----
+
+export interface PluginInstallRequestLike {
+  kind?: 'file' | 'npm' | 'github' | 'url'
+  id?: string
+  source: string
+}
+
+export interface PluginInstallResultLike {
+  ok: boolean
+  id?: string
+  name?: string
+  version?: string
+  error?: string
+}
+
+let importProvider: ((req: PluginInstallRequestLike) => Promise<PluginInstallResultLike> | PluginInstallResultLike) | null = null
+
+export function registerPluginImportProvider(fn: ((req: PluginInstallRequestLike) => Promise<PluginInstallResultLike> | PluginInstallResultLike) | null): void {
+  importProvider = fn
+}
+
+/** plugin.install：安装插件（含 preInstall 深度安装），由 host-shell 注册的实现提供服务 */
+export async function installPluginViaHost(req: PluginInstallRequestLike): Promise<PluginInstallResultLike> {
+  if (!importProvider) return { ok: false, error: 'plugin install provider not registered' }
+  return importProvider(req)
+}
+
 // ---- 宿主 → 订阅者 worker 转发（plugins.logs.subscribe 用；export.ts setHostRuntime 转发）----
 export type PluginRuntimeCall = (pluginId: string, method: string, args: unknown[]) => Promise<unknown>
 let runtimeCall: PluginRuntimeCall | null = null

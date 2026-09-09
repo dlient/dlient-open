@@ -221,6 +221,7 @@ export interface PluginModule {
   scanInstalled: HostApiMap['plugin.scanInstalled']
   runtimeList: HostApiMap['plugin.runtimeList']
   installLocal: HostApiMap['plugin.installLocal']
+  install: HostApiMap['plugin.install']
   isRunning: HostApiMap['plugin.isRunning']
   cleanupUninstall: HostApiMap['plugin.cleanupUninstall']
   setActive: HostApiMap['plugin.setActive']
@@ -389,6 +390,7 @@ export const HOST_API_PATHS: string[] = [
   'plugin.scanInstalled',
   'plugin.runtimeList',
   'plugin.installLocal',
+  'plugin.install',
   'plugin.isRunning',
   'plugin.cleanupUninstall',
   'plugin.setActive',

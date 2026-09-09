@@ -131,6 +131,36 @@ export interface PluginInstallLocalResult {
   path: string
 }
 
+/** Request for plugin.install: install a plugin (with its preInstall dependencies) from any supported source. */
+export interface PluginInstallRequest {
+  /**
+   * Source kind. Auto-detected from `source` when omitted:
+   * http(s) ending at github.com → github; other http(s) → url; otherwise npm.
+   * `file` must be given explicitly to install from a local .dlient path.
+   */
+  kind?: 'file' | 'npm' | 'github' | 'url'
+  /**
+   * npm only: the npm package name to fetch (defaults to parsing `<pkg>@<spec>` from `source`).
+   * When `id` is provided, `source` is treated as the version spec (e.g. "0.5.1" / "latest").
+   */
+  id?: string
+  /** .dlient file path (kind=file) / github repo URL / .dlient URL / npm reference (`pkg` or `pkg@spec`) */
+  source: string
+}
+
+/** Result of plugin.install. */
+export interface PluginInstallResult {
+  ok: boolean
+  /** Installed plugin id. Present when ok. */
+  id?: string
+  /** Localized plugin name. Present when ok. */
+  name?: string
+  /** Installed version. Present when ok. */
+  version?: string
+  /** Failure message (english). Present when !ok. */
+  error?: string
+}
+
 /** Flat signature map for the plugin module. */
 export type PluginModuleApi = {
   /** Lists the full host api-table metadata (keys + scope/level/localized descriptions). System plugins only. */
@@ -149,6 +179,8 @@ export type PluginModuleApi = {
   'plugin.runtimeList'(): Promise<unknown[]>
   /** Imports a local plugin (copy artifacts + patch manifest + register + report + start). Worker-scope primitive for dev-tools. */
   'plugin.installLocal'(dir: string): Promise<PluginInstallLocalResult>
+  /** Installs a plugin package (deep-installs its preInstall deps) from a .dlient file path / npm / github release / URL. Worker-scope primitive. */
+  'plugin.install'(request: PluginInstallRequest): Promise<PluginInstallResult>
   /** Whether a plugin worker is currently running. */
   'plugin.isRunning'(pluginId: string): Promise<boolean>
   /** Post-uninstall cleanup of a plugin (grants + change broadcast). System plugins only. */
