@@ -23,6 +23,7 @@ import type { PermissionModuleApi } from './modules/permission'
 import type { PluginModuleApi } from './modules/plugin'
 import type { WebviewModuleApi } from './modules/webview'
 import type { LogModuleApi } from './modules/log'
+import type { NodejsModuleApi } from './modules/nodejs'
 
 // 各模块 options / result 等具名类型（含各 <Cap>ModuleApi）
 export type * from './modules/app'
@@ -40,6 +41,7 @@ export type * from './modules/child'
 export type * from './modules/permission'
 export type * from './modules/plugin'
 export type * from './modules/webview'
+export type * from './modules/nodejs'
 
 /**
  * 全部 host-api 方法的统一签名表（扁平，key = 点路径）。
@@ -60,4 +62,5 @@ export type HostApiMap = AppModuleApi &
   PermissionModuleApi &
   PluginModuleApi &
   WebviewModuleApi &
-  LogModuleApi
+  LogModuleApi &
+  NodejsModuleApi

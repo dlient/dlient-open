@@ -34,5 +34,5 @@ See [skills/SKILL.md](skills/SKILL.md) for the AI Agent skill provided by this p
 
 ## Dependencies
 
-- `nodejs` (system plugin): `nodejs.checkLocal` / `nodejs.checkBundled` / `nodejs.install`.
+- Built-in host-api `nodejs.*` (open-source host manages the runtime in the main process — there is no `nodejs` plugin): the worker calls `rpc.nodejs.resolveRuntime()` / `rpc.nodejs.install()` (requires the `nodejs.resolveRuntime` / `nodejs.install` manifest permissions). The `dlient.dependencies.nodejs` entry keeps the host readiness gate on the runtime.
 - Host UI `@dlient-open/ui`: `Webview` component (requires `webview.create` / `webview.navigate` permissions).

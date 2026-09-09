@@ -2,7 +2,8 @@
  * dsh worker 入口（src/main/index.ts）。
  *
  * 目标：在 dlient 中运行 DeepSeek Harness（dsh）的 web UI。
- * 流程：检测 Node.js（nodejs 插件：本地 → 内置 → 安装）→（未安装时）npm 全局安装 @deepseek-ai/dsh →
+ * 流程：经 nodejs host-api 解析 Node.js 运行时（内置 LTS 优先 → PATH 本地 → 自动安装内置）→
+ *       （未安装时）npm 全局安装 @deepseek-ai/dsh →
  *       用 node:net 分配空闲端口 → 启动 `dsh web --no-open --host 127.0.0.1 --port <port>` →
  *       探测端口就绪 → 把 URL 交给渲染端。
  * 渲染端用 @dlient-open/ui 的 Webview 组件（经本 worker 内建 webview:* 转发）加载该 URL。
@@ -21,14 +22,14 @@ type DshLocale = 'zh-CN' | 'en-US'
 const DSH_MSG: Record<DshLocale, Record<string, (p?: Record<string, string | number>) => string>> = {
   'zh-CN': {
     execFailed: (p) => `命令失败（exit ${p?.code}）：${p?.err ?? ''}`,
-    nodeMissing: () => '无法获取 Node.js 运行时（nodejs 插件不可用）',
+    nodeMissing: () => '无法获取 Node.js 运行时（内置 LTS 安装失败或不可用）',
     npmGlobalMissing: () => '无法定位 npm 全局目录（npm root -g 无输出）',
     npmInstallFailed: (p) => `npm install 失败（exit ${p?.code}）: ${p?.out ?? ''}`,
     binMissing: () => '@deepseek-ai/dsh 包缺少 bin 入口',
   },
   'en-US': {
     execFailed: (p) => `Command failed (exit ${p?.code}): ${p?.err ?? ''}`,
-    nodeMissing: () => 'Cannot resolve the Node.js runtime (nodejs plugin unavailable)',
+    nodeMissing: () => 'Cannot resolve the Node.js runtime (built-in LTS install failed or unavailable)',
     npmGlobalMissing: () => 'Cannot locate the global npm directory (npm root -g returned nothing)',
     npmInstallFailed: (p) => `npm install failed (exit ${p?.code}): ${p?.out ?? ''}`,
     binMissing: () => 'The @deepseek-ai/dsh package is missing its bin entry',
@@ -75,7 +76,7 @@ function getFreePort(): Promise<number> {
     return rpc.net.getFreePort() as Promise<number>
   }
 
-// ---- Node.js 运行时解析（nodejs 插件）----
+// ---- Node.js 运行时解析（内置 host-api：rpc.nodejs.* 替代闭源版跨插件 invoke）----
 
 /** 宿主代 execFile（一次性探测；child.execFile 白名单 + 超时由宿主裁决；非零退出码抛错，等价旧 execFileAsync） */
 async function execFileHosted(node: string, args: string[], timeoutMs = 8000): Promise<string> {
@@ -85,8 +86,9 @@ async function execFileHosted(node: string, args: string[], timeoutMs = 8000): P
 }
 
 /**
- * 解析可用的 node 可执行文件绝对路径：内置（userData 隔离目录 LTS，优先）→ 本地（PATH/常见路径，兜底）→ 安装内置。
- * 与 nodejs 插件 resolveRuntime 的「内置优先」语义一致：避免本机旧版 node 跑 dsh 报 ESM/native 兼容错误。
+ * 解析可用的 node 可执行文件绝对路径：内置（~/.dlient-open/plugin-data/nodejs LTS，优先）→
+ * 本地（PATH/常见路径，兜底）→ 安装内置。与宿主 nodejs.resolveRuntime 的「内置优先」语义一致，
+ * 避免本机旧版 node 跑 dsh 报 ESM/native 兼容错误。
  */
 /** 记录实际选中的 node（路径 + 版本），便于定位 dsh 运行时的 node 环境 */
 async function pickNode(node: string, source: string): Promise<string> {
@@ -101,8 +103,8 @@ async function pickNode(node: string, source: string): Promise<string> {
 }
 
 async function resolveNode(): Promise<string> {
-  // 1) 内置（bundled）优先：经 nodejs.resolveRuntime 统一解析（内置优先语义一致，避免裸 fs 探测）
-  const rt = (await rpc.plugin.invoke('nodejs', 'nodejs.resolveRuntime').catch(() => null)) as {
+  // 1) 内置（bundled）优先：经 rpc.nodejs.resolveRuntime 统一解析（内置优先语义一致，避免裸 fs 探测）
+  const rt = (await rpc.nodejs.resolveRuntime().catch(() => null)) as {
     source?: 'bundled' | 'path' | 'none'
     node?: string
   } | null
@@ -121,7 +123,7 @@ async function resolveNode(): Promise<string> {
     }
   }
   // 3) 安装内置 LTS（本地也没有时）
-  const res = (await rpc.plugin.invoke('nodejs', 'nodejs.install').catch(() => null)) as {
+  const res = (await rpc.nodejs.install().catch(() => null)) as {
     ok?: boolean
     path?: string
     error?: string

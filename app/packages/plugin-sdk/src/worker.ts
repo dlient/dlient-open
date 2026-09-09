@@ -767,13 +767,14 @@ export function createWorkerRpc(pluginId: string): WorkerRpc {
       fileName: string,
       opts?: { maxRestarts?: number; backoffMs?: number; maxBackoffMs?: number },
     ): Promise<CreateNativeHostResult> => {
-      // 1. 官方 node 运行时（nodejs.resolveRuntime；未装 nodejs 插件 → error）
+      // 1. 官方 node 运行时：内置 nodejs host-api（nodejs.resolveRuntime；内置/本地均无 → error）
+      //    开源版宿主不再有 nodejs 插件：插件声明 manifest.permissions 的 nodejs.resolveRuntime 即可直连。
       let node = ''
       try {
-        const rt = (await callHostApiImpl('plugin.invoke', ['nodejs', 'nodejs.resolveRuntime', []])) as { node?: string }
+        const rt = (await callHostApiImpl('nodejs.resolveRuntime', [])) as { node?: string }
         node = typeof rt?.node === 'string' ? rt.node : ''
       } catch {
-        /* 未装 nodejs 插件 */
+        /* 未授权 nodejs.resolveRuntime，或内置/本地运行时均不可用 */
       }
       if (!node) return { host: null, client: null, error: 'createNativeHost: nodejs runtime unavailable' }
       // 2. 宿主按 fileName 在插件 dist 查找并代 spawn 官方 Node

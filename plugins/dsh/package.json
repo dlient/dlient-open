@@ -36,7 +36,9 @@
       "child.execFile",
       "net.getFreePort",
       "net.probePort",
-      "i18n.getLocale"
+      "i18n.getLocale",
+      "nodejs.resolveRuntime",
+      "nodejs.install"
     ],
     "expose": {},
     "dependencies": {

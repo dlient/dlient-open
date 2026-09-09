@@ -13,13 +13,13 @@
  *   const host = createNativeHostServer()
  *   host.registerService('sqlite', { query: (params) => db.prepare(params[0]).all() }, () => db.close())
  *
- * 用法（插件 worker，Electron utilityProcess；宿主代管推荐，沙箱兼容）：
- *   import { spawnHosted } from '@dlient-open/plugin-sdk'
+ * 用法（插件 worker；宿主代管，沙箱兼容）：
  *   import { createNativeHostClient, createHostedTransport } from '@dlient-open/native-host-sdk'
- *   const rt = await rpc.callPlugin('nodejs', 'nodejs.resolveRuntime')
- *   const handle = await spawnHosted(rpc, { cmd: rt.node, args: [entry], cwd: pluginDir })
- *   const host = createNativeHostClient({ transport: createHostedTransport(handle) })
- *   await host.call('sqlite', 'query', ['SELECT 1'])
+ *   // 官方 node 运行时由内置 nodejs.* host-api 解析（rpc.nodejs.resolveRuntime；开源版宿主无 nodejs 插件），
+ *   // rpc.createNativeHost 内部完成解析 + 宿主代 spawn + 崩溃自动重启：
+ *   const { host, client, error } = await rpc.createNativeHost('native-host.js')
+ *   await client.call('sqlite', 'query', ['SELECT 1'])
+ *   // 低层手动路径（自己解析 node 并代 spawn）：rpc.nodejs.resolveRuntime() → rpc.child.spawn(...) → createHostedTransport(handle)
  *   // 旧模型（worker 直连 spawn）仍支持：createNativeHostClient({ proc, dispose })
  */
 

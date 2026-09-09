@@ -146,6 +146,14 @@ export interface NetModule {
   probePort: HostApiMap['net.probePort']
 }
 
+/** 内置 Node.js 运行时（开源版并入宿主主进程，替代闭源 nodejs 插件的跨插件 invoke） */
+export interface NodejsModule {
+  checkLocal: HostApiMap['nodejs.checkLocal']
+  checkBundled: HostApiMap['nodejs.checkBundled']
+  resolveRuntime: HostApiMap['nodejs.resolveRuntime']
+  install: HostApiMap['nodejs.install']
+}
+
 // 单源类型（@dlient-open/api-types）：通知 options/事件 payload 与主进程/UI 端共享同一定义。
 import type { HostApiMap, NotificationSendOptions, NotificationHandle } from '@dlient-open/api-types'
 export type { NotificationSendOptions, NotificationEventPayload, NotificationHandle } from '@dlient-open/api-types'
@@ -263,6 +271,7 @@ export interface HostApiSurface {
   fs: FsModule
   i18n: I18nModule
   net: NetModule
+  nodejs: NodejsModule
   notification: NotificationModule
   log: LogModule
   os: OsModule
@@ -348,6 +357,11 @@ export const HOST_API_PATHS: string[] = [
   'net.request',
   'net.getFreePort',
   'net.probePort',
+  // nodejs（内置运行时：直接宿主调用，替代旧跨插件 invoke）
+  'nodejs.checkLocal',
+  'nodejs.checkBundled',
+  'nodejs.resolveRuntime',
+  'nodejs.install',
   'notification.isSupported',
   'notification.send',
   'notification.remove',

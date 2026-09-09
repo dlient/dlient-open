@@ -21,6 +21,7 @@ import { permissionApis } from './permission'
 import { childApis } from './child'
 import { webviewApis } from './webview'
 import { logApis } from './log'
+import { nodejsApis } from './nodejs'
 
 const rawApis: ApiDefinition[] = [
   ...appApis,
@@ -40,6 +41,7 @@ const rawApis: ApiDefinition[] = [
   ...childApis,
   ...webviewApis,
   ...logApis,
+  ...nodejsApis,
 ]
 
 /** 全部 host-api 定义（模块顺序即展示顺序；handler 恒非空） */

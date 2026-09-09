@@ -13,8 +13,8 @@
  * 使用：
  *   1. 在 package.json 声明 dlient.nativeModules.dependencies（如 { "better-sqlite3": "^11.0.0" }）；
  *   2. 把原生模块也加入 devDependencies（本地开发/构建期类型）；
- *   3. 参照下方 registerService 实现你的 service 方法，worker 侧经 rpc.plugin.invoke('nodejs.runNativeHost'…)
- *      或 @dlient-open/native-host-sdk 客户端调用。
+ *   3. 参照下方 registerService 实现你的 service 方法，worker 侧经 rpc.createNativeHost('native-host.js')
+ *      （内置 nodejs.* host-api 解析官方 Node 并宿主代 spawn）或 @dlient-open/native-host-sdk 客户端调用。
  */
 
 import { createRequire } from 'node:module'

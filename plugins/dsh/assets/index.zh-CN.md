@@ -4,7 +4,7 @@
 
 dsh 在 dlient 中运行 **DeepSeek Harness（dsh）** 的 AI Agent Web UI（`type: 'app'`）。
 
-- **worker**：检测 / 安装 Node.js（`nodejs` 插件）→ `npm install -g @deepseek-ai/dsh` → 启动 `dsh web --no-open`（默认 `http://127.0.0.1:3080`），探测端口就绪后把 URL 交给渲染端。
+- **worker**：解析 / 安装 Node.js（内置 `nodejs.*` host-api，优先内置 LTS）→ `npm install -g @deepseek-ai/dsh` → 启动 `dsh web --no-open`（默认 `http://127.0.0.1:3080`），探测端口就绪后把 URL 交给渲染端。
 - **渲染端**：用 `@dlient-open/ui` 的 `Webview` 组件内嵌 DSH 网页（组件经本 worker 内建 `webview:*` 转发到主进程 WebContentsView）。
 
 ```
@@ -34,11 +34,11 @@ await rpc.plugin.invoke('dsh', 'dsh.stop')
 
 ## 使用
 
-1. 确保 `nodejs`（系统插件）已安装。
-2. 在 dlient 中打开 dsh 应用：首次会检测 Node.js（无则自动下载安装），随后安装 DSH 并启动服务。
+1. 无需安装任何运行时插件：内置 `nodejs.*` host-api 会自动解析 Node.js（无则下载内置 LTS）。
+2. 在 dlient 中打开 dsh 应用：首次会解析 Node.js（无则自动下载安装），随后安装 DSH 并启动服务。
 3. 进入 DSH 界面后：Settings → Models 配置 API Key，再选择 Workspace 即可开始使用。
 
 ## 依赖
 
-- `nodejs`（系统插件）：`nodejs.checkLocal` / `nodejs.checkBundled` / `nodejs.install`
+- 内置 host-api `nodejs.*`（开源版宿主在主进程内置运行时管理，**不再有 nodejs 插件**）：worker 调用 `rpc.nodejs.resolveRuntime()` / `rpc.nodejs.install()`（manifest 需声明 `nodejs.resolveRuntime` / `nodejs.install` 权限）；`dlient.dependencies.nodejs` 保留宿主对运行时的就绪门控。
 - 宿主 UI 库 `@dlient-open/ui`：`Webview` 组件（manifest 需声明 `webview.create` / `webview.navigate` 权限）
