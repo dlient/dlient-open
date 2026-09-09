@@ -405,9 +405,26 @@ export default function App() {
         showNotPackaged(pluginName(target, locale) || id)
         return
       }
+      // 打开前完整性预检（本地签名）：验签失败（文件被改/损坏）→ 友好提示，引导重新安装
+      if (target && target.source !== 'dev' && !opened.includes(id)) {
+        const v = await window.dlient.hostShell.verifyPlugin(id).catch(() => ({ ok: true }))
+        if (!v.ok) {
+          const name = pluginName(target, locale) || id
+          void modal.confirm({
+            title: t(`${NS}.piCorruptTitle`),
+            description: String(t(`${NS}.piCorruptMsg`, { name })),
+            confirmBtn: t(`${NS}.piReinstall`),
+            cancelBtn: t(`${NS}.gotIt`),
+            onConfirm: () => {
+              void handleImport()
+            },
+          })
+          return
+        }
+      }
       openPlugin(id)
     },
-    [opened, pluginMap, locale, openPlugin, showNotPackaged],
+    [opened, pluginMap, locale, t, openPlugin, showNotPackaged],
   )
 
   /** 固定 / 取消固定到活动栏 */

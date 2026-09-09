@@ -168,6 +168,8 @@ interface DlientBridge {
     confirmPluginInstall(confirmId: string, ok: boolean): Promise<void>
     setActiveApp(pluginId: string | null): Promise<void>
     listPlugins(): Promise<InstalledPluginInfo[]>
+    /** 校验插件包完整性（本地签名）；失败返回 { ok:false, reason:'integrity' }（@dev 恒 ok） */
+    verifyPlugin(pluginId: string): Promise<{ ok: boolean; reason?: string; error?: string }>
     checkReadiness(
       pluginId: string,
       manifest?: { dependencies?: unknown; preInstall?: unknown; nodeVersion?: unknown },

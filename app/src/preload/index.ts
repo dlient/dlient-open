@@ -720,6 +720,7 @@ const dlientBridge = {
     confirmPluginInstall: (confirmId: string, ok: boolean) => ipcRenderer.invoke('host-shell:plugin-install-confirm-result', confirmId, ok),
     setActiveApp: (pluginId: string | null) => ipcRenderer.invoke('host-shell:set-active-app', pluginId),
     listPlugins: () => ipcRenderer.invoke('host-shell:list-plugins'),
+    verifyPlugin: (pluginId: string) => ipcRenderer.invoke('host-shell:verify-plugin', pluginId),
     checkReadiness: (pluginId: string, manifest?: unknown) =>
       ipcRenderer.invoke('host-shell:check-readiness', pluginId, manifest),
     nodejsStatus: (opts?: { version?: string }) => ipcRenderer.invoke('host-shell:nodejs-status', opts),

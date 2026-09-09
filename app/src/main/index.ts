@@ -6,7 +6,7 @@
 import { app, BrowserWindow, protocol, session, shell, nativeImage } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import * as fs from 'node:fs'
 import { PROTOCOL_NAME, parseDlientUrl, RendererChannels, getProtocolConfig, logger, basePluginId, DlientErrorCode } from '@dlient-open/core'
 import type { PluginSource, PluginType } from '@dlient-open/core'
@@ -33,7 +33,7 @@ import {
   syncPkgHashes,
   type InstalledPluginEntry,
 } from './installed-registry'
-import { createOrgService, type OrgLocateResult } from './org'
+import { createOrgService, verifyPluginPackageStartable, type OrgLocateResult } from './org'
 import { registerHostShell, initHostSettings } from './host-shell'
 import { ensureMasterKey } from './crypt'
 import { parseManifestIcon, type PluginRecord } from '../types'
@@ -744,11 +744,40 @@ async function bootstrap() {
   setTimeout(startupCorePlugins, 8000)
 }
 
-// ---- 协议层资源放行（开源版）----
-// 无服务端、无签名：协议层不再做完整性校验（verifyPluginPackageStartable 恒放行），
-// 插件由用户自行负责。保留 ensureProtocolPluginVerified 供协议处理器调用，恒返回 true。
-function ensureProtocolPluginVerified(_dir: string, _pluginId: string): Promise<boolean> {
-  return Promise.resolve(true)
+// ---- 协议层资源放行（开源版本地签名）----
+// 安装时已生成本地 signature.json；协议提供 UI 资源前校验：
+//   - dev 源码目录（dlient-open/plugins 等）→ 放行（@dev 不受签名影响）；
+//   - 无 signature.json（历史导入的未签名包）→ 放行（存量兼容）；
+//   - 有 signature.json 但验签失败（文件被改/注入/损坏）→ 拒绝提供 UI 资源（403）。
+// 协议是 UI 资源高频通道（每次加载命中多次）：以 signature.json 的 mtime+size 为缓存键，
+// 签名文件未变（说明安装后未改动）→ 30s 内直接复用上次结果，避免逐文件全量 hash。
+interface ProtocolVerifyCache {
+  sigKey: string
+  ok: boolean
+  at: number
+}
+const protocolVerifyCache = new Map<string, ProtocolVerifyCache>()
+
+function ensureProtocolPluginVerified(dir: string, pluginId: string): Promise<boolean> {
+  const sigPath = path.join(dir, 'signature.json')
+  if (!existsSync(sigPath)) return Promise.resolve(true) // 未签名（历史导入 / 外部 dev 目录）放行
+  let sigKey = ''
+  try {
+    const st = statSync(sigPath)
+    sigKey = `${st.mtimeMs}:${st.size}`
+  } catch {
+    return Promise.resolve(true)
+  }
+  const cached = protocolVerifyCache.get(dir)
+  if (cached && cached.sigKey === sigKey && Date.now() - cached.at < 30000) {
+    return Promise.resolve(cached.ok)
+  }
+  return verifyPluginPackageStartable(dir, pluginId, { devSourceDirs: [repoPluginsRoot()] })
+    .then((v) => {
+      protocolVerifyCache.set(dir, { sigKey, ok: v.ok, at: Date.now() })
+      return v.ok
+    })
+    .catch(() => false)
 }
 
 // dlientV3:// 协议磁盘映射：dlientV3://plugin/<id>/<path> → 插件目录注册表（外部 dev 插件优先）。

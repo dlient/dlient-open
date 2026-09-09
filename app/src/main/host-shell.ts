@@ -20,6 +20,7 @@ import { webviewSetActivePlugin } from './lib/webview'
 import { checkBundled, checkLocal, getNodejsProgress, installNodejs, resolveRuntime, withNpmRegistry } from './nodejs'
 import { upsertInstalledEntry, removeInstalledEntry, type InstalledPluginEntry } from './installed-registry'
 import { listPluginCapabilities, registerPluginImportProvider } from './lib/plugin'
+import { signPluginForDir, verifyPluginPackageStartable } from './org'
 import { broadcastAppSetting, useSystemNativeTheme } from './lib/theme'
 import { atomicWriteFile, withFileLock } from './file-queue'
 
@@ -215,6 +216,16 @@ export function registerHostShell(deps: HostShellDeps): void {
   // 渲染层安装确认结果回填（plugin.install 用户授权）
   handle('plugin-install-confirm-result', (_event, confirmId: unknown, ok: unknown) => {
     resolveInstallConfirm(String(confirmId ?? ''), ok === true)
+  })
+
+  // 校验插件包完整性（layout 打开前预检；@dev / dev 源码目录不受签名影响，签名损坏才报错）
+  handle('verify-plugin', async (pluginId: unknown) => {
+    const id = String(pluginId ?? '')
+    const record = requireDeps().listPlugins().find((p) => p.id === id)
+    if (!record) return { ok: false, error: `plugin not found: ${id}` }
+    if (record.source === 'dev') return { ok: true }
+    const v = await verifyPluginPackageStartable(record.path, id)
+    return v.ok ? { ok: true } : { ok: false, reason: 'integrity', error: v.error ?? 'integrity check failed' }
   })
 
   // 卸载（layout 右侧菜单「卸载」；移除目录 + 注册表 + 缓存 + 广播）
@@ -844,6 +855,10 @@ async function installPackageFile(filePath: string, visited: Set<string>): Promi
     const npm = await npmInstall(targetDir, Object.entries(nativeModules.dependencies).map(([n, v]) => `${n}@${v}`))
     if (!npm.ok) return { ok: false, error: `原生模块安装失败：${npm.error ?? ''}` }
   }
+
+  // 本地签名（signature.json，格式与闭源一致）：改写后的 manifest（source=local/system=false）+ dist 参与签名
+  const signed = await signPluginForDir(targetDir, id, version)
+  if (!signed.ok) return { ok: false, error: `插件本地签名失败：${signed.error ?? ''}` }
 
   // 注册表 + 上报 + 广播
   const entry: InstalledPluginEntry = {
