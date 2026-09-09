@@ -1,0 +1,37 @@
+# 模板单源：templates/plugin-demo 直接入库（publish.mjs prepare 校验源存在）。
+# 模板在包内测试构建时的 node_modules/dist/pack/.dlient 由下方通用规则覆盖；
+# 仅保留对模板内 lockfile 的定向忽略。
+templates/**/package-lock.json
+*.tgz
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies & build outputs
+node_modules
+dist
+dist-ssr
+*.local
+
+# dlient plugin local pack（包内测试模板时在 templates/plugin-demo 下生成）
+pack/
+*.dlient
+plugin.asar
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

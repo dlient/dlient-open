@@ -1,0 +1,44 @@
+/* __PLUGIN_ID__ 最小样式（模板）：基于宿主 tokens.css 的 --dlient-* 变量，亮/暗主题由宿主 .dark class 自动切换。
+ * CSS 作用域（docs/specs/plugin-css-scope.md）：本文件在构建期由 plugin-sdk 预设自动改写为
+ * `[data-plugin="__PLUGIN_ID__"] :where(...)`，只作用于本插件视图子树及其弹层（Portal 落在
+ * body 级同属性容器），与其它插件 / 宿主全局样式互不污染；无需任何手动改类名。
+ * 推荐新样式用 `*.module.css`（vite CSS Modules，hash 类名，结构性最强），普通 .css 由前缀作用域兜底。 */
+.demo-root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--dlient-text-color-primary);
+}
+
+.demo-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--dlient-text-color-primary);
+}
+
+.demo-text {
+  margin: 0;
+  font-size: 14px;
+  color: var(--dlient-text-color-secondary);
+}
+
+.demo-btn {
+  padding: 4px 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  border: 1px solid var(--dlient-component-border);
+  border-radius: 6px;
+  background: var(--dlient-bg-color-container);
+  color: var(--dlient-text-color-primary);
+  cursor: pointer;
+}
+
+.demo-logs {
+  width: min(720px, 100% - 48px);
+  margin-top: 4px;
+  text-align: left;
+}

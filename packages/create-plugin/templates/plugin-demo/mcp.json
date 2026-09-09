@@ -1,0 +1,13 @@
+{
+  "$schema": "https://modelcontextprotocol.io/schemas/tools.json",
+  "name": "__PLUGIN_ID__",
+  "description": "dlient 模板演示插件：提供示例 greet 方法",
+  "tools": [
+    {
+      "name": "__PLUGIN_ID__.greet",
+      "description": "示例方法：返回一条问候消息",
+      "inputSchema": { "type": "object", "properties": {}, "required": [] },
+      "permissions": []
+    }
+  ]
+}
