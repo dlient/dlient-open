@@ -97,6 +97,10 @@
 .dl-rail-icon-sm { width: 18px; height: 18px; }
 /* 操作台按钮真彩图标（内置 layout 资源经 vite 打包为 URL，直接 <img> 渲染） */
 .dl-rail-img { object-fit: contain; }
+/* console 真彩图标按钮：未选中透明度 50%（对齐 PluginIcon 的 active 语义），选中/悬停全不透明 */
+.dl-rail-btn:not(.active) .dl-rail-img { opacity: 0.5; transition: opacity .15s; }
+.dl-rail-btn:hover .dl-rail-img { opacity: 1; }
+.dl-rail-btn.active .dl-rail-img { opacity: 1; }
 /* 底部固定入口图标（设置）：内联 SVG fill=currentColor —— 未选中 --dlient-color-text-3，选中主色调 */
 .dl-rail-fixed-icon { display: block; width: 18px; height: 18px; color: var(--dlient-color-text-3); }
 .dl-rail-btn:hover .dl-rail-fixed-icon { color: var(--dlient-text-color-primary); }
