@@ -59,6 +59,11 @@ const SHARED_MODULES = {
   '@dlient-open/api-bridge': ApiBridge as unknown as Record<string, unknown>,
   '@dlient-open/i18n': I18n as unknown as Record<string, unknown>,
   '@dlient-open/ui': Ui as unknown as Record<string, unknown>,
+  // 旧版 @dlient/* 共享名 → 同一模块实例（向后兼容：历史 .dlient 包的 remoteEntry
+  // 以旧名 external，未重新打包时经此处解析到宿主单实例）。
+  '@dlient/api-bridge': ApiBridge as unknown as Record<string, unknown>,
+  '@dlient/i18n': I18n as unknown as Record<string, unknown>,
+  '@dlient/ui': Ui as unknown as Record<string, unknown>,
 } as const
 
 let sharedInitialized = false
