@@ -243,11 +243,11 @@ interface ReadinessPlugin {
   nodeVersion?: string
 }
 
-/** 读插件 manifest 的依赖与 nodeVersion（path 目录下 package.json 的 dlient 段） */
+/** 读插件 manifest 的依赖与 nodeVersion（path 目录下 package.json 的 dlient 段）；依赖并集含 preInstall 键 */
 function readManifestRuntime(dir: string): { dependencies: string[]; nodeVersion?: string } | null {
   try {
     const pkg = JSON.parse(String(readFileSync(join(dir, 'package.json'), 'utf-8')).replace(/^\uFEFF/, '')) as {
-      dlient?: { dependencies?: Record<string, unknown> | unknown[]; nodeVersion?: unknown }
+      dlient?: { dependencies?: Record<string, unknown> | unknown[]; preInstall?: Record<string, unknown>; nodeVersion?: unknown }
     }
     const d = pkg.dlient
     if (!d) return null
@@ -257,6 +257,11 @@ function readManifestRuntime(dir: string): { dependencies: string[]; nodeVersion
       : deps && typeof deps === 'object'
         ? Object.keys(deps as Record<string, unknown>)
         : []
+    // preInstall：安装期依赖，键同样是「必须已安装的依赖插件」→ 并入就绪闭包
+    const pre = d.preInstall
+    if (pre && typeof pre === 'object' && !Array.isArray(pre)) {
+      for (const key of Object.keys(pre)) if (!depIds.includes(key)) depIds.push(key)
+    }
     const nodeVersion = typeof d.nodeVersion === 'string' ? d.nodeVersion : undefined
     return { dependencies: depIds, nodeVersion }
   } catch {
@@ -285,6 +290,14 @@ function depIdsOf(deps: unknown): string[] {
   return []
 }
 
+/** 就绪检测的依赖并集：dependencies + preInstall 键（preInstall 决定「依赖插件必须被安装」，与安装期语义一致） */
+function manifestDepUnion(manifest: { dependencies?: unknown; preInstall?: unknown } | undefined): string[] {
+  const a = depIdsOf(manifest?.dependencies)
+  const b = depIdsOf(manifest?.preInstall)
+  if (b.length === 0) return a
+  return Array.from(new Set([...a, ...b]))
+}
+
 export interface ReadinessResult {
   ready: boolean
   /** 闭包中未安装的依赖（无市场可自动安装；需用户导入） */
@@ -305,7 +318,7 @@ export interface ReadinessResult {
  */
 export async function checkReadiness(
   pluginId: string,
-  manifest?: { dependencies?: unknown; nodeVersion?: unknown },
+  manifest?: { dependencies?: unknown; preInstall?: unknown; nodeVersion?: unknown },
 ): Promise<ReadinessResult> {
   const installed = requireDeps().listPlugins()
   const byId = new Map<string, ReadinessPlugin>()
@@ -340,7 +353,7 @@ export async function checkReadiness(
     visited.add(id)
     const isRoot = id === pluginId
     const entry = byId.get(id)
-    const deps = isRoot && manifest ? depIdsOf(manifest.dependencies) : entry ? entry.dependencies : []
+    const deps = isRoot && manifest ? manifestDepUnion(manifest) : entry ? entry.dependencies : []
     const nodeVersion = isRoot && manifest ? (typeof manifest.nodeVersion === 'string' ? manifest.nodeVersion : undefined) : entry?.nodeVersion
     await checkNodejs(nodeVersion, deps)
     if (!entry) {

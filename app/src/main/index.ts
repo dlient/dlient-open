@@ -368,6 +368,7 @@ function listInstalledPlugins(): Array<{
           name?: unknown
           description?: string | Record<string, string>
           dependencies?: Record<string, string[]>
+          preInstall?: Record<string, unknown>
           dist?: string
           system?: boolean
         }
@@ -378,6 +379,7 @@ function listInstalledPlugins(): Array<{
           name?: unknown
           description?: string | Record<string, string>
           dependencies?: Record<string, string[]>
+          preInstall?: Record<string, unknown>
           dist?: string
           system?: boolean
         }
@@ -387,8 +389,9 @@ function listInstalledPlugins(): Array<{
       descriptionL10n = d?.description
       const desc = d?.description
       description = typeof desc === 'string' ? desc : desc?.default
-      // 依赖清单：manifest dlient.dependencies 的键（插件 id 列表）
-      dependencies = Object.keys(d?.dependencies ?? {})
+      // 依赖清单：manifest dlient.dependencies 键 ∪ dlient.preInstall 键（preInstall 同为「必须已安装」的依赖）
+      const preIds = d?.preInstall && typeof d.preInstall === 'object' && !Array.isArray(d.preInstall) ? Object.keys(d.preInstall) : []
+      dependencies = Array.from(new Set([...Object.keys(d?.dependencies ?? {}), ...preIds]))
       // dist 产物校验：remoteEntry.js / worker.js 至少其一
       const distDir = path.join(r.path, d?.dist ?? 'dist')
       hasDist = existsSync(path.join(distDir, 'remoteEntry.js')) || existsSync(path.join(distDir, 'worker.js'))

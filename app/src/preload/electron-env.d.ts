@@ -164,7 +164,7 @@ interface DlientBridge {
     listPlugins(): Promise<InstalledPluginInfo[]>
     checkReadiness(
       pluginId: string,
-      manifest?: { dependencies?: unknown; nodeVersion?: unknown },
+      manifest?: { dependencies?: unknown; preInstall?: unknown; nodeVersion?: unknown },
     ): Promise<{
       ready: boolean
       missingDeps: string[]
