@@ -10,7 +10,7 @@
  *   - 内容区：所有已打开的页面常驻渲染，用 display 控制显隐（切换不销毁）
  *
  * 开源版无 auth / 无插件市场 / 无 dev-tools：首方数据经 window.dlient.hostShell 获取；
- * 插件清单来自宿主已安装注册表（~/.dlient/plugins 目录扫描）。
+ * 插件清单来自宿主已安装注册表（~/.dlient-open/plugins 目录扫描）。
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'

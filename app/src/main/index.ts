@@ -38,9 +38,9 @@ import { registerHostShell, initHostSettings } from './host-shell'
 import { ensureMasterKey } from './crypt'
 import { parseManifestIcon, type PluginRecord } from '../types'
 
-// 数据目录：统一到 <用户主目录>/.dlient（替代系统默认 %APPDATA%/dlient），便于备份/迁移/多端一致。
-// 环境变量 DLIENT_USER_DATA 可显式覆盖（测试 / 便携场景）。须在任何 userData 读取之前设置。
-const DLIENT_USER_DATA = (process.env.DLIENT_USER_DATA ?? '').trim() || path.join(app.getPath('home'), '.dlient')
+// 数据目录：开源版统一到 <用户主目录>/.dlient-open（与闭源版 ~/.dlient 隔离，互不串数据），
+// 便于备份/迁移。环境变量 DLIENT_USER_DATA 可显式覆盖（测试 / 便携场景）。须在任何 userData 读取之前设置。
+const DLIENT_USER_DATA = (process.env.DLIENT_USER_DATA ?? '').trim() || path.join(app.getPath('home'), '.dlient-open')
 app.setPath('userData', DLIENT_USER_DATA)
 logger.info('app', 'userData set', { userData: DLIENT_USER_DATA })
 

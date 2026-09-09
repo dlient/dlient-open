@@ -1,7 +1,7 @@
 /**
  * 内置设置页（src/renderer/setting/SettingPage.tsx，开源版并入宿主）。
  * 功能：语言 / 主题 / 开机自启动 / 全局快捷键（录制）/ 关于（版本 + Node.js 运行环境）。
- * 数据经 window.dlient.hostShell.settingsGet / settingsSet 持久化（~/.dlient/settings.json）；
+ * 数据经 window.dlient.hostShell.settingsGet / settingsSet 持久化（~/.dlient-open/settings.json）；
  * 主题 / 语言变更由主进程广播 theme / language 通道全端生效。
  * 开源版无账户 / 设备管理（无 auth / 服务端）。
  */

@@ -43,7 +43,7 @@ export interface HostShellDeps {
   reportInstalled: (entries: unknown[]) => void
   /** 插件变更广播（渲染层刷新） */
   broadcastChange: (pluginId: string, scope: string) => void
-  /** 插件根目录（~/.dlient/plugins） */
+  /** 插件根目录（~/.dlient-open/plugins） */
   pluginsRoot: () => string
   /** 快捷键动作分发（'show-main-window' 等；与 runtime 装配同一入口） */
   runShortcutAction: (action: string) => void
@@ -51,7 +51,7 @@ export interface HostShellDeps {
 
 let shellDeps: HostShellDeps | null = null
 
-// ---- 设置持久化（内置 setting；~/.dlient/settings.json）----
+// ---- 设置持久化（内置 setting；~/.dlient-open/settings.json）----
 
 interface AppSettings {
   language?: 'zh-CN' | 'en-US'
