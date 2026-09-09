@@ -37,6 +37,7 @@
       "net.getFreePort",
       "net.probePort",
       "i18n.getLocale",
+      "log.write",
       "nodejs.resolveRuntime",
       "nodejs.install"
     ],
