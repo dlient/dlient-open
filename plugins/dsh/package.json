@@ -1,0 +1,74 @@
+{
+  "name": "dsh",
+  "version": "0.1.0",
+  "type": "module",
+  "dlient": {
+    "id": "dsh",
+    "name": {
+      "default": "DeepSeek Harness",
+      "zh-CN": "DeepSeek Harness",
+      "en-US": "DeepSeek Harness"
+    },
+    "description": {
+      "default": "在 dlient 中运行 DeepSeek Harness（AI Agent）",
+      "zh-CN": "在 dlient 中运行 DeepSeek Harness（AI Agent）",
+      "en-US": "Run DeepSeek Harness AI Agent inside dlient"
+    },
+    "type": "app",
+    "source": "dev",
+    "icon": "assets/icon.svg",
+    "platforms": [
+      "win32.x64",
+      "win32.arm64",
+      "darwin.x64",
+      "darwin.arm64",
+      "linux.x64",
+      "linux.arm64"
+    ],
+    "permissions": [
+      "webview.create",
+      "webview.navigate",
+      "webview.update",
+      "webview.destroy",
+      "webview.setVisible",
+      "webview.webContentsCall",
+      "child.spawn",
+      "child.execFile",
+      "net.getFreePort",
+      "net.probePort",
+      "i18n.getLocale"
+    ],
+    "expose": {},
+    "dependencies": {
+      "nodejs": [
+        "nodejs.resolveRuntime"
+      ]
+    },
+    "nodeVersion": "22"
+  },
+  "scripts": {
+    "build": "node script/build-clean.mjs && npm run build:ui && npm run build:worker",
+    "build:ui": "vite build",
+    "build:worker": "node script/build-worker.mjs",
+    "pack": "npm run build && node script/make-dlient.mjs",
+    "dev:watch": "vite build --watch",
+    "dev:watch:worker": "node script/build-worker.mjs --watch",
+    "dev": "concurrently -k \"npm:dev:watch\" \"npm:dev:watch:worker\""
+  },
+  "devDependencies": {
+    "@dlient-open/api-bridge": "^4.0.2",
+    "@dlient-open/i18n": "^3.0.4",
+    "@dlient-open/plugin-sdk": "^5.1.3",
+    "@dlient-open/ui": "^5.0.6",
+    "@types/node": "^26.2.0",
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^9.1.0",
+    "esbuild": "^0.20.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "typescript": "^5.2.2",
+    "vite": "^5.1.6"
+  }
+}

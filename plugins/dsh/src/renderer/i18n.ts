@@ -1,0 +1,41 @@
+import { addResourceBundle } from '@dlient-open/i18n'
+
+// dsh 文案（命名空间用插件 id 保证唯一）
+addResourceBundle('dsh', {
+  'zh-CN': {
+    reload: '刷新',
+    stop: '停止',
+    retry: '重新启动',
+    starting: 'DSH 正在启动…',
+    error: '启动失败',
+    startFailed: '启动失败',
+    statusReady: 'DSH 运行中',
+    statusNode: '检测 Node.js…',
+    statusInstall: '安装 DSH…',
+    statusStarting: '启动 DSH…',
+    statusError: '启动失败',
+    statusIdle: '已停止',
+    hintNode: '正在检测 / 安装 Node.js 运行时，首次可能需要几分钟…',
+    hintInstall: '正在安装 DeepSeek Harness（npm 全局安装），首次可能需要几分钟…',
+    hintStarting: '正在启动 DSH web 服务，首次运行需要下载依赖包…',
+    idleHint: '服务已停止，点击「重新启动」再次启动',
+  },
+  'en-US': {
+    reload: 'Reload',
+    stop: 'Stop',
+    retry: 'Restart',
+    starting: 'Starting DSH…',
+    error: 'Failed to start',
+    startFailed: 'Start failed',
+    statusReady: 'DSH running',
+    statusNode: 'Checking Node.js…',
+    statusInstall: 'Installing DSH…',
+    statusStarting: 'Starting DSH…',
+    statusError: 'Failed to start',
+    statusIdle: 'Stopped',
+    hintNode: 'Checking / installing the Node.js runtime. First run may take a few minutes…',
+    hintInstall: 'Installing DeepSeek Harness (npm global install). First run may take a few minutes…',
+    hintStarting: 'Starting the DSH web server. First run downloads dependencies…',
+    idleHint: 'Service stopped. Click Restart to launch again',
+  },
+})

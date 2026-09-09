@@ -9,7 +9,7 @@
 
 import { defineConfig, type UserConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { cssScope } from './css-scope'
+import { cssScope } from './css-scope.ts'
 
 export interface PluginViteConfigOptions {
   pluginId: string
