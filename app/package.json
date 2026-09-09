@@ -1,9 +1,9 @@
 {
-    "name":  "dlient",
+    "name":  "dlient-open",
     "private":  true,
-    "version":  "3.0.2",
+    "version":  "0.1.0",
     "type":  "module",
-    "description":  "Dlient开发者工具包",
+    "description":  "Dlient Open —— 本地优先、插件驱动的开源桌面 AI Agent 宿主",
     "scripts":  {
                     "dev":  "vite",
                     "dev:online":  "cross-env DLIENT_DEV_ONLINE=1 vite",

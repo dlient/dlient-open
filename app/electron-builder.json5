@@ -1,10 +1,15 @@
 // @see - https://www.electron.build/configuration/configuration
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "desktop.dlient.com",
+  "appId": "com.dlient.open",
   "asar": true,
   "compression": "maximum",
-  "productName": "Dlient V3",
+  "productName": "Dlient Open",
+  "publish": {
+    "provider": "github",
+    "owner": "dlient",
+    "repo": "dlient-open"
+  },
   "directories": {
     "output": "release/${version}"
   },
@@ -34,7 +39,7 @@
   },
   "win": {
     "icon": "build/icon.png",
-    "executableName": "DlientV3",
+    "executableName": "DlientOpen",
     "target": [
       {
         "target": "nsis",

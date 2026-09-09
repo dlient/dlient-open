@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            args: --win
+          - os: macos-latest
+            args: --mac
+          - os: ubuntu-latest
+            args: --linux
+    runs-on: ${{ matrix.os }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Cache Electron binaries
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+          key: electron-${{ runner.os }}-${{ hashFiles('app/package-lock.json') }}
+
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Type-check
+        working-directory: app
+        run: npx tsc --noEmit
+
+      - name: Build renderer / main / preload
+        working-directory: app
+        run: npx vite build
+
+      - name: Package & publish (${{ runner.os }})
+        working-directory: app
+        run: npx electron-builder ${{ matrix.args }} --publish always
+
+      - name: Verify artifacts
+        working-directory: app
+        shell: bash
+        run: |
+          ls -la release
+          test -n "$(ls release/**/*.{exe,dmg,AppImage} 2>/dev/null | head -1)" || echo "no installer artifact found"
