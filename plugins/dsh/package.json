@@ -42,12 +42,8 @@
       "nodejs.install"
     ],
     "expose": {},
-    "dependencies": {
-      "nodejs": [
-        "nodejs.resolveRuntime"
-      ]
-    },
-    "nodeVersion": "22"
+    "nodeVersion": "22",
+    "system": false
   },
   "scripts": {
     "build": "node script/build-clean.mjs && npm run build:ui && npm run build:worker",

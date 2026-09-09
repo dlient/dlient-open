@@ -355,7 +355,8 @@ export default function App() {
     const ids = new Set(plugins.map((p) => p.id))
     const map = new Map<string, string[]>()
     for (const p of plugins) {
-      const missing = (p.dependencies ?? []).filter((d) => !ids.has(d))
+      // 'nodejs' 为运行时占位（开源版并入宿主、非插件），就绪与否由 checkReadiness/nodeVersion 单独判定
+      const missing = (p.dependencies ?? []).filter((d) => d !== 'nodejs' && !ids.has(d))
       if (missing.length > 0) map.set(p.id, missing)
     }
     return map
