@@ -710,6 +710,14 @@ const dlientBridge = {
     windowIsMaximized: () => ipcRenderer.invoke('host-shell:window-is-maximized'),
     menuPopup: (opts: unknown) => ipcRenderer.invoke('host-shell:menu-popup', opts),
     openExternal: (url: string) => ipcRenderer.invoke('host-shell:open-external', url),
+    /** 监听宿主「plugin.install 用户确认」请求（payload: { confirmId, payload:{id,kind,source,description} }）；返回取消订阅 */
+    onPluginInstallConfirm: (cb: (data: { confirmId: string; payload: { id: string; kind: 'file' | 'npm' | 'github' | 'url'; source: string; description: string } }) => void) => {
+      const listener = (_event: unknown, data: unknown) => cb(data as never)
+      ipcRenderer.on('host-shell:plugin-install-confirm', listener)
+      return () => ipcRenderer.removeListener('host-shell:plugin-install-confirm', listener)
+    },
+    /** 回传 plugin.install 确认结果（true=用户确认安装） */
+    confirmPluginInstall: (confirmId: string, ok: boolean) => ipcRenderer.invoke('host-shell:plugin-install-confirm-result', confirmId, ok),
     setActiveApp: (pluginId: string | null) => ipcRenderer.invoke('host-shell:set-active-app', pluginId),
     listPlugins: () => ipcRenderer.invoke('host-shell:list-plugins'),
     checkReadiness: (pluginId: string, manifest?: unknown) =>

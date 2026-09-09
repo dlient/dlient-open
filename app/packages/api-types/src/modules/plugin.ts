@@ -133,19 +133,14 @@ export interface PluginInstallLocalResult {
 
 /** Request for plugin.install: install a plugin (with its preInstall dependencies) from any supported source. */
 export interface PluginInstallRequest {
-  /**
-   * Source kind. Auto-detected from `source` when omitted:
-   * http(s) ending at github.com → github; other http(s) → url; otherwise npm.
-   * `file` must be given explicitly to install from a local .dlient path.
-   */
-  kind?: 'file' | 'npm' | 'github' | 'url'
-  /**
-   * npm only: the npm package name to fetch (defaults to parsing `<pkg>@<spec>` from `source`).
-   * When `id` is provided, `source` is treated as the version spec (e.g. "0.5.1" / "latest").
-   */
-  id?: string
-  /** .dlient file path (kind=file) / github repo URL / .dlient URL / npm reference (`pkg` or `pkg@spec`) */
+  /** Target plugin id (also the npm package name when kind = 'npm' and source is a bare version). */
+  id: string
+  /** Source kind. */
+  kind: 'file' | 'npm' | 'github' | 'url'
+  /** .dlient file path (kind=file) / github repo URL / .dlient URL / npm package or `pkg@spec`. */
   source: string
+  /** User-facing description shown in the host confirmation dialog before install. */
+  description: string
 }
 
 /** Result of plugin.install. */

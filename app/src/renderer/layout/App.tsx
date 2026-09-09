@@ -313,6 +313,9 @@ export default function App() {
     }
   })
 
+  /** 插件安装确认框忙碌守卫（plugin.install 用户授权；同时只允许一个） */
+  const piConfirmBusy = useRef(false)
+
   /** 拉取插件清单（首方通道：宿主已安装注册表 + 目录扫描） */
   const reloadPlugins = useCallback(() => {
     void window.dlient.hostShell
@@ -519,6 +522,52 @@ export default function App() {
       },
     })
   }, [t, runImportInstall])
+
+  /** 监听宿主「plugin.install 用户确认」：弹授权框（复用导入确认弹框样式），结果回传主进程 */
+  useEffect(() => {
+    const off = window.dlient.hostShell.onPluginInstallConfirm((data) => {
+      const confirmId = data?.confirmId
+      const p = data?.payload
+      if (!confirmId || !p) return
+      if (piConfirmBusy.current) {
+        void window.dlient.hostShell.confirmPluginInstall(confirmId, false)
+        return
+      }
+      piConfirmBusy.current = true
+      let responded = false
+      const settle = (ok: boolean) => {
+        if (responded) return
+        responded = true
+        piConfirmBusy.current = false
+        void window.dlient.hostShell.confirmPluginInstall(confirmId, ok)
+      }
+      void modal.confirm({
+        title: t(`${NS}.piConfirmTitle`, { id: p.id }),
+        description: (
+          <div className="dl-install-confirm">
+            {p.description && <p className="dl-import-review-desc">{p.description}</p>}
+            <ul className="dl-import-deps">
+              <li className="dl-import-dep">
+                <span className="dl-import-dep-name">{t(`${NS}.piKindLabel`)}</span>
+                <span className="dl-import-dep-src">{t(`${NS}.piKind_${p.kind}`)}</span>
+              </li>
+              <li className="dl-import-dep">
+                <span className="dl-import-dep-name">{t(`${NS}.piSourceLabel`)}</span>
+                <span className="dl-import-dep-src">{p.source}</span>
+              </li>
+            </ul>
+          </div>
+        ),
+        width: 460,
+        confirmBtn: t(`${NS}.importConfirm`),
+        cancelBtn: t(`${NS}.importCancel`),
+        onConfirm: () => settle(true),
+        onCancel: () => settle(false),
+        onClose: () => settle(false),
+      })
+    })
+    return off
+  }, [t])
 
   // 内容区活动应用（activePlugin 归属）：切换时同步宿主 webview 可见性归属
   useEffect(() => {

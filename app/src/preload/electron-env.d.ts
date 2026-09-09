@@ -160,6 +160,12 @@ interface DlientBridge {
     menuPopup(opts: unknown): Promise<string | null>
     /** 打开外部浏览器（导入依赖 tab 查看 npm / github 用） */
     openExternal(url: string): Promise<void>
+    /** 监听宿主「plugin.install 用户确认」请求；返回取消订阅函数 */
+    onPluginInstallConfirm(
+      cb: (data: { confirmId: string; payload: { id: string; kind: 'file' | 'npm' | 'github' | 'url'; source: string; description: string } }) => void,
+    ): () => void
+    /** 回传 plugin.install 确认结果（true = 用户确认安装） */
+    confirmPluginInstall(confirmId: string, ok: boolean): Promise<void>
     setActiveApp(pluginId: string | null): Promise<void>
     listPlugins(): Promise<InstalledPluginInfo[]>
     checkReadiness(

@@ -69,9 +69,11 @@ export function registerPluginInstaller(h: PluginInstallerLike | null): void {
 // ---- 插件安装提供方（host-shell 注册：plugin.install 复用 .dlient 深度安装引擎）----
 
 export interface PluginInstallRequestLike {
-  kind?: 'file' | 'npm' | 'github' | 'url'
-  id?: string
+  id: string
+  kind: 'file' | 'npm' | 'github' | 'url'
   source: string
+  /** 宿主确认弹框展示的用户说明 */
+  description: string
 }
 
 export interface PluginInstallResultLike {

@@ -212,6 +212,10 @@ export function registerHostShell(deps: HostShellDeps): void {
   )
   // plugin.install host-api 提供方：复用 .dlient 深度安装核心（同源：文件 / npm / github / URL）
   registerPluginImportProvider((req) => pluginInstallFromRequest(req))
+  // 渲染层安装确认结果回填（plugin.install 用户授权）
+  handle('plugin-install-confirm-result', (_event, confirmId: unknown, ok: unknown) => {
+    resolveInstallConfirm(String(confirmId ?? ''), ok === true)
+  })
 
   // 卸载（layout 右侧菜单「卸载」；移除目录 + 注册表 + 缓存 + 广播）
   handle('uninstall-plugin', async (pluginId: unknown) => {
@@ -888,15 +892,70 @@ function parseNpmRef(ref: string): { name: string; spec: string } {
   return { name: ref, spec: 'latest' }
 }
 
-/** plugin.install 实现：kind 可选自动判定；file 显式走本地 .dlient 路径 */
-async function pluginInstallFromRequest(req: {
-  kind?: 'file' | 'npm' | 'github' | 'url'
-  id?: string
+// ---- plugin.install 用户确认（宿主主窗口渲染层弹框 → 结果回填）----
+
+interface InstallConfirmPayload {
+  id: string
+  kind: 'file' | 'npm' | 'github' | 'url'
   source: string
+  description: string
+}
+
+const pendingInstallConfirms = new Map<string, (ok: boolean) => void>()
+let installConfirmSeq = 0
+
+function resolveInstallConfirm(confirmId: string, ok: boolean): void {
+  const fn = pendingInstallConfirms.get(confirmId)
+  if (!fn) return
+  pendingInstallConfirms.delete(confirmId)
+  fn(ok)
+}
+
+/** 请求渲染层弹出「安装确认」框；无可用窗口 / 超时视为取消 */
+function requestInstallConfirm(payload: InstallConfirmPayload): Promise<boolean> {
+  const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+  if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return Promise.resolve(false)
+  const confirmId = `pi-${++installConfirmSeq}-${Date.now()}`
+  return new Promise((resolve) => {
+    pendingInstallConfirms.set(confirmId, resolve)
+    win.webContents.send('host-shell:plugin-install-confirm', { confirmId, payload })
+    setTimeout(() => {
+      if (pendingInstallConfirms.delete(confirmId)) resolve(false)
+    }, 180000)
+  })
+}
+
+/** 解析 npm 安装源：source 为 '<pkg>@<spec>' 时按全引用，否则视为 id 的版本（latest 兜底） */
+function npmNameSpec(id: string, source: string): { name: string; spec: string } {
+  if (source.includes('@') && !source.startsWith('@')) {
+    const parsed = parseNpmRef(source)
+    return { name: parsed.name, spec: parsed.spec }
+  }
+  const spec = source.trim() === '' || source.trim() === 'latest' || source.trim() === '*' ? 'latest' : source.trim()
+  return { name: id, spec }
+}
+
+/** plugin.install 实现：参数全必填；先经渲染层用户确认，确认后才真实安装 */
+async function pluginInstallFromRequest(req: {
+  id?: string
+  kind?: 'file' | 'npm' | 'github' | 'url'
+  source?: string
+  description?: string
 }): Promise<ImportResult> {
+  const id = typeof req?.id === 'string' ? req.id.trim() : ''
+  const rawKind = req?.kind
   const source = typeof req?.source === 'string' ? req.source.trim() : ''
+  const description = typeof req?.description === 'string' ? req.description.trim() : ''
+  const kind: 'file' | 'npm' | 'github' | 'url' =
+    rawKind === 'file' || rawKind === 'npm' || rawKind === 'github' || rawKind === 'url' ? rawKind : detectInstallSourceKind(source)
+  if (!id) return { ok: false, error: 'plugin.install: id required' }
   if (!source) return { ok: false, error: 'plugin.install: source required' }
-  const kind = req?.kind ?? detectInstallSourceKind(source)
+  if (!description) return { ok: false, error: 'plugin.install: description required' }
+
+  // 用户确认（主窗口弹框；取消/超时 → 拒绝安装）
+  const confirmed = await requestInstallConfirm({ id, kind, source, description })
+  if (!confirmed) return { ok: false, error: '安装已取消（用户未确认）' }
+
   try {
     if (kind === 'file') {
       // 本地 .dlient 路径（无临时文件，无需清理）
@@ -906,9 +965,7 @@ async function pluginInstallFromRequest(req: {
     if (kind === 'github') tmpPath = await resolveGithubDepToFile(source)
     else if (kind === 'url') tmpPath = await resolveUrlDepToFile(source)
     else {
-      const npmId = typeof req.id === 'string' && req.id.trim() !== '' ? req.id.trim() : null
-      const name = npmId ?? parseNpmRef(source).name
-      const spec = npmId ? source : parseNpmRef(source).spec
+      const { name, spec } = npmNameSpec(id, source)
       tmpPath = await resolveNpmDepToFile(name, spec)
     }
     try {
