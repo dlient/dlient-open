@@ -1,23 +1,23 @@
 {
-    "name": "@dlient-open/create-plugin",
-    "version": "0.1.0",
-    "description": "dlient-open 开源版插件开发脚手架：一条命令创建适配开源宿主（layout 导入 .dlient）的插件模板",
-    "type": "module",
-    "bin": {
-        "create-plugin": "bin/cli.mjs"
-    },
-    "files": [
-        "bin",
-        "templates"
-    ],
-    "engines": {
-        "node": ">=18"
-    },
-    "scripts": {
-        "prepare:templates": "node publish.mjs prepare",
-        "pack": "node publish.mjs pack",
-        "release": "node publish.mjs publish"
-    },
-    "license": "UNLICENSED",
-    "private": false
+  "name": "@dlient-open/create-plugin",
+  "version": "0.1.1",
+  "description": "dlient-open 开源版插件开发脚手架：一条命令创建适配开源宿主（layout 导入 .dlient）的插件模板",
+  "type": "module",
+  "bin": {
+    "create-plugin": "bin/cli.mjs"
+  },
+  "files": [
+    "bin",
+    "templates"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "prepare:templates": "node publish.mjs prepare",
+    "pack": "node publish.mjs pack",
+    "release": "node publish.mjs publish"
+  },
+  "license": "UNLICENSED",
+  "private": false
 }
