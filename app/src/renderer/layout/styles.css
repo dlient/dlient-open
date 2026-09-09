@@ -192,9 +192,9 @@
 .dl-import-review-head { margin: 4px 0 6px; font-size: 13px; font-weight: 600; color: var(--dlient-text-color-primary); }
 .dl-import-review-empty { margin: 0; font-size: 13px; color: var(--dlient-text-color-secondary); }
 .dl-import-perms { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto; border: 1px solid var(--dlient-component-stroke-color); border-radius: 6px; }
-.dl-import-perm { display: flex; align-items: flex-start; gap: 10px; padding: 7px 10px; font-size: 13px; line-height: 1.5; }
+.dl-import-perm { display: flex; flex-direction: column; gap: 3px; padding: 7px 10px; font-size: 13px; line-height: 1.5; }
 .dl-import-perm + .dl-import-perm { border-top: 1px solid var(--dlient-component-stroke-color); }
-.dl-import-perm-key { flex-shrink: 0; font-size: 12px; color: var(--dlient-brand-color); }
+.dl-import-perm-key { font-size: 12px; font-weight: 600; color: var(--dlient-brand-color); }
 .dl-import-perm-desc { color: var(--dlient-text-color-secondary); word-break: break-all; }
 
 /* 应用卡片（dlient 卡片布局：自定义内容区） */
