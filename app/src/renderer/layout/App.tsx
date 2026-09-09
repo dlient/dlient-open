@@ -93,6 +93,17 @@ function AppCard({
   )
 }
 
+/** 风险警示图标（非 default 权限行显示；inline SVG，颜色随 currentColor） */
+function RiskWarnIcon() {
+  return (
+    <svg className="dl-import-risk-icon" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+      <path d="M8 1.8 15 13.6H1L8 1.8Z" strokeLinejoin="round" />
+      <path d="M8 5.6v3.6" strokeLinecap="round" />
+      <circle cx="8" cy="11.4" r="0.9" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
 /** 导入「权限确认」弹框正文：插件名/版本/描述 + 声明的宿主权限清单（描述按当前 locale 取，未知 key 兜底显示 key） */
 function ImportPreviewBody({
   preview,
@@ -117,12 +128,19 @@ function ImportPreviewBody({
         <p className="dl-import-review-empty">{t(`${NS}.importNoPerms`)}</p>
       ) : (
         <ul className="dl-import-perms">
-          {preview.permissions.map((it) => (
-            <li key={it.key} className="dl-import-perm">
-              <code className="dl-import-perm-key">{it.key}</code>
-              <span className="dl-import-perm-desc">{it.description ? it.description[loc] ?? it.key : it.key}</span>
-            </li>
-          ))}
+          {preview.permissions.map((it) => {
+            const risk = it.level === 'dangerous' ? 'dangerous' : it.level === 'warn' ? 'warn' : 'default'
+            return (
+              <li key={it.key} className={`dl-import-perm dl-import-perm--${risk}`}>
+                <span className="dl-import-perm-head">
+                  <span className={`dl-import-risk-dot dl-import-risk-dot--${risk}`} />
+                  {risk !== 'default' && <RiskWarnIcon />}
+                  <code className="dl-import-perm-key">{it.key}</code>
+                </span>
+                <span className="dl-import-perm-desc">{it.description ? it.description[loc] ?? it.key : it.key}</span>
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>
