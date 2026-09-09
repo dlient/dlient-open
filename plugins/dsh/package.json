@@ -27,11 +27,9 @@
     ],
     "permissions": [
       "webview.create",
-      "webview.navigate",
       "webview.update",
       "webview.destroy",
       "webview.setVisible",
-      "webview.webContentsCall",
       "child.spawn",
       "child.execFile",
       "net.getFreePort",

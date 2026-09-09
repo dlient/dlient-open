@@ -19,54 +19,15 @@ interface DshStatus {
   startedOnce?: boolean
 }
 
-/** 注入 dsh 页面的主题脚本：html color-scheme + body data-ds-dark-theme（body 未就绪时延迟到 DOMContentLoaded） */
-function dshThemeScript(isDark: boolean): string {
-  const scheme = isDark ? 'dark' : 'light'
-  return `(() => {
-  const isDark = ${isDark};
-  const apply = () => {
-    document.documentElement.style.colorScheme = '${scheme}';
-    if (isDark) document.body.setAttribute('data-ds-dark-theme', '');
-    else document.body.removeAttribute('data-ds-dark-theme');
-  };
-  if (document.body) apply();
-  else document.addEventListener('DOMContentLoaded', apply, { once: true });
-})();`
-}
-
 export default function App() {
   const api = useDlientApi()
   const { t, locale } = useI18n()
   const [status, setStatus] = useState<DshStatus>({ phase: 'idle' })
-  const [viewId, setViewId] = useState<string | null>(null)
   const startingRef = useRef(false)
-
-  /** 把当前主题应用到 dsh webview（executeJavaScript，白名单校验在主进程 webview-manager） */
-  const applyThemeToWebview = useCallback(
-    (id: string, isDark: boolean) => {
-      return api
-        .request('webview:webContents:call', [{ viewId: id, method: 'executeJavaScript', args: [dshThemeScript(isDark)] }])
-        .then((res) => {
-          if (!isApiOk(res)) console.error('[dsh] apply theme to webview failed:', res)
-        })
-        .catch((err) => console.error('[dsh] apply theme to webview failed:', err))
-    },
-    [api],
-  )
-
-  // 主题由 setting 插件经主进程广播（theme 通道，REPLAY 回放初始值；system 已解析为 dark/light）
-  const darkRef = useRef(false)
-  useEffect(() => {
-    if (!viewId) return
-    const off = window.dlient.on('theme', (theme) => {
-      darkRef.current = theme === 'dark'
-      void applyThemeToWebview(viewId, darkRef.current)
-    })
-    return off
-  }, [viewId, applyThemeToWebview])
 
   // 宿主语言/主题 → dsh settings.yaml 同步（worker 写文件，dsh 页面自动刷新）：
   // 初始下发一次当前外观；此后监听宿主 language / theme 广播实时下发。
+  const darkRef = useRef(false)
   const pushAppearance = useCallback(
     (language: string, dark: boolean) => {
       void api.request('dsh.applyAppearance', [language, dark]).catch(() => undefined)
@@ -93,13 +54,6 @@ export default function App() {
       offTheme()
     }
   }, [locale, pushAppearance])
-
-  const handleViewReady = useCallback((id: string) => setViewId(id), [])
-
-  // 页面加载完成后 body 一定就绪，再应用一次（覆盖初始注入时页面尚未加载的情况）
-  const handleDidFinishLoad = useCallback(() => {
-    if (viewId) void applyThemeToWebview(viewId, darkRef.current)
-  }, [viewId, applyThemeToWebview])
 
   // 订阅 worker 推送的状态
   useEffect(() => {
@@ -165,11 +119,7 @@ export default function App() {
     <div className="dsh-root">
       {status.phase === 'ready' && status.url ? (
         <div className="dsh-body">
-          <Webview
-            src={status.url}
-            onViewReady={handleViewReady}
-            onDidFinishLoad={handleDidFinishLoad}
-          />
+          <Webview src={status.url} />
         </div>
       ) : (
         <div className="dsh-empty">
