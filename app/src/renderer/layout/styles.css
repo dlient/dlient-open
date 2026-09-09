@@ -206,6 +206,24 @@
 .dl-import-perm--dangerous .dl-import-perm-key { color: var(--dlient-error-color-6); }
 .dl-import-perm-desc { color: var(--dlient-text-color-secondary); word-break: break-all; }
 
+/* 导入确认弹框：权限 / 依赖 tab（页签式） */
+.dl-import-tabs { display: flex; gap: 4px; margin: 12px 0 8px; border-bottom: 1px solid var(--dlient-component-stroke-color); }
+.dl-import-tab { appearance: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; padding: 6px 12px; background: transparent; font-size: 13px; color: var(--dlient-text-color-secondary); cursor: pointer; transition: color .15s; }
+.dl-import-tab:hover { color: var(--dlient-text-color-primary); }
+.dl-import-tab.active { color: var(--dlient-brand-color); border-bottom-color: var(--dlient-brand-color); font-weight: 600; }
+
+/* 依赖列表（与权限同布局：两行一条；npm/github 行可点击） */
+.dl-import-deps { list-style: none; margin: 0; padding: 0; text-align: left; max-height: 220px; overflow-y: auto; border: 1px solid var(--dlient-component-stroke-color); border-radius: 6px; }
+.dl-import-dep { display: flex; flex-direction: column; gap: 3px; padding: 7px 10px; font-size: 13px; line-height: 1.5; text-align: left; }
+.dl-import-dep + .dl-import-dep { border-top: 1px solid var(--dlient-component-stroke-color); }
+.dl-import-dep-name { font-size: 13px; font-weight: 600; color: var(--dlient-text-color-primary); word-break: break-all; }
+.dl-import-dep-src { font-size: 12px; color: var(--dlient-text-color-secondary); word-break: break-all; }
+.dl-import-dep--link { cursor: pointer; transition: background .15s; }
+.dl-import-dep--link:hover { background: var(--dl-fill-1); }
+.dl-import-dep--link:hover .dl-import-dep-name,
+.dl-import-dep--link:hover .dl-import-dep-src { color: var(--dlient-brand-color); }
+.dl-import-dep--link:hover .dl-import-dep-name { text-decoration: underline; }
+
 /* 应用卡片（dlient 卡片布局：自定义内容区） */
 .dl-card { border: 1px solid var(--dlient-component-stroke-color); border-radius: 8px; background: var(--dl-fill-0); padding: 16px; }
 .dl-card-click { cursor: pointer; transition: border-color .15s, box-shadow .15s; }

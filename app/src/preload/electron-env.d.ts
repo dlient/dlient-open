@@ -158,6 +158,8 @@ interface DlientBridge {
     windowSetFullScreen(flag: boolean): Promise<void>
     windowIsMaximized(): Promise<boolean>
     menuPopup(opts: unknown): Promise<string | null>
+    /** 打开外部浏览器（导入依赖 tab 查看 npm / github 用） */
+    openExternal(url: string): Promise<void>
     setActiveApp(pluginId: string | null): Promise<void>
     listPlugins(): Promise<InstalledPluginInfo[]>
     checkReadiness(
@@ -193,6 +195,7 @@ interface DlientBridge {
         type?: string
         description?: string
         permissions: Array<{ key: string; level: string; description?: { 'zh-CN': string; 'en-US': string } | null }>
+        preInstall: Array<{ id: string; source: string; kind: 'npm' | 'github' | 'url' }>
       }
     } | null>
     /** 确认导入（解包落盘 → 注册表 → 广播）；filePath 来自 previewImportPlugin 返回的 preview.filePath */

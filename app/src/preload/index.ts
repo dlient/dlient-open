@@ -709,6 +709,7 @@ const dlientBridge = {
     windowSetFullScreen: (flag: boolean) => ipcRenderer.invoke('host-shell:window-set-fullscreen', flag),
     windowIsMaximized: () => ipcRenderer.invoke('host-shell:window-is-maximized'),
     menuPopup: (opts: unknown) => ipcRenderer.invoke('host-shell:menu-popup', opts),
+    openExternal: (url: string) => ipcRenderer.invoke('host-shell:open-external', url),
     setActiveApp: (pluginId: string | null) => ipcRenderer.invoke('host-shell:set-active-app', pluginId),
     listPlugins: () => ipcRenderer.invoke('host-shell:list-plugins'),
     checkReadiness: (pluginId: string, manifest?: unknown) =>

@@ -7,13 +7,14 @@
  * 仅注册白名单方法，不做插件级授权（宿主壳为可信首方 UI）。
  */
 
-import { BrowserWindow, app, dialog, globalShortcut, ipcMain } from 'electron'
+import { BrowserWindow, app, dialog, globalShortcut, ipcMain, shell } from 'electron'
 import { readFileSync } from 'node:fs'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, normalize, sep } from 'node:path'
 import { promisify } from 'node:util'
-import { inflateRaw } from 'node:zlib'
+import { gunzip, inflateRaw } from 'node:zlib'
 import { execFile } from 'node:child_process'
+import { tmpdir } from 'node:os'
 import { getWindowController, popupNativeMenu } from './lib/app'
 import { webviewSetActivePlugin } from './lib/webview'
 import { checkBundled, checkLocal, getNodejsProgress, installNodejs, resolveRuntime, withNpmRegistry } from './nodejs'
@@ -23,6 +24,7 @@ import { broadcastAppSetting, useSystemNativeTheme } from './lib/theme'
 import { atomicWriteFile, withFileLock } from './file-queue'
 
 const inflateRawAsync = promisify(inflateRaw)
+const gunzipAsync = promisify(gunzip)
 
 // ---- 注入依赖（index.ts 装配：避免循环 import）----
 
@@ -167,6 +169,12 @@ export function registerHostShell(deps: HostShellDeps): void {
   handle('window-is-maximized', () => getWindowController()?.isMaximized() ?? false)
 
   handle('menu-popup', (opts: unknown) => popupNativeMenu(opts ?? {}))
+  // 打开外部浏览器（layout 导入依赖 tab 的「查看 npm / github」链接；首方可信通道）
+  handle('open-external', (url: unknown) => {
+    const u = String(url ?? '')
+    if (!/^https?:\/\//i.test(u)) throw new Error('open-external: invalid url')
+    void shell.openExternal(u).catch((err) => console.error('[host-shell] openExternal failed:', err))
+  })
 
   // 内容区活动插件归属（webview 可见性；null = 操作台）
   handle('set-active-app', (pluginId: unknown) => {
@@ -512,13 +520,63 @@ interface ImportPermItem {
   description: { 'zh-CN': string; 'en-US': string } | null
 }
 
+/** preInstall 依赖项：plugin id → 安装源；kind 决定安装/展示方式 */
+interface ImportDepItem {
+  id: string
+  /** 原始配置（semver / github 地址 / .dlient 直链） */
+  source: string
+  /** npm（semver） / github（release 找 .dlient） / url（.dlient 直链下载） */
+  kind: 'npm' | 'github' | 'url'
+}
+
 type ImportResult = { ok: boolean; id?: string; name?: string; version?: string; exists?: boolean; error?: string }
 type ImportPreviewResult =
-  | { ok: true; preview: { filePath: string; id: string; name: string; version: string; type?: string; description?: string; permissions: ImportPermItem[] } }
+  | {
+      ok: true
+      preview: {
+        filePath: string
+        id: string
+        name: string
+        version: string
+        type?: string
+        description?: string
+        permissions: ImportPermItem[]
+        preInstall: ImportDepItem[]
+      }
+    }
   | { ok: false; error: string }
   | null
 
-/** preview：选文件 + 解析 manifest + 权限清单（不落盘）；用户取消文件选择返回 null */
+/** 判定 preInstall 值类型：https(github.com) → github；https(*.dlient) → url；其余（含 http 非 dlient）按 npm 语义 */
+function classifyPreInstall(raw: string): ImportDepItem['kind'] {
+  const v = String(raw ?? '').trim()
+  if (/^https?:\/\//i.test(v)) {
+    try {
+      const host = new URL(v).hostname.toLowerCase()
+      if (host === 'github.com' || host.endsWith('.github.com')) return 'github'
+    } catch {
+      /* 非法 URL 按 npm 处理 */
+    }
+    // 其余 http(s) 一律按直接文件下载处理（.dlient 或任意可下载文件）
+    return 'url'
+  }
+  return 'npm'
+}
+
+/** 解析 manifest preInstall（{ id: source } 对象）为有序依赖列表 */
+function parsePreInstall(d: Record<string, unknown>): ImportDepItem[] {
+  const raw = d.preInstall
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return []
+  const list: ImportDepItem[] = []
+  for (const [id, value] of Object.entries(raw)) {
+    if (!/^[a-z0-9-]+$/.test(id)) continue
+    if (typeof value !== 'string' || !value.trim()) continue
+    list.push({ id, source: value.trim(), kind: classifyPreInstall(value) })
+  }
+  return list
+}
+
+/** preview：选文件 + 解析 manifest + 权限/依赖清单（不落盘）；用户取消文件选择返回 null */
 async function previewImportPlugin(): Promise<ImportPreviewResult> {
   const filePath = await pickImportFile()
   if (!filePath) return null
@@ -543,20 +601,210 @@ async function previewImportPlugin(): Promise<ImportPreviewResult> {
         const meta = capByKey.get(key)
         return { key, level: meta?.level ?? 'default', description: meta?.description ?? null }
       }),
+      preInstall: parsePreInstall(d),
     },
   }
 }
 
-/** install：执行导入（解包落盘 → 原生模块 → 注册表 → 上报 → 广播）；filePath 来自 preview 确认 */
-async function installImportFrom(filePath: string): Promise<ImportResult> {
+// ---- preInstall 深度安装：manifest 声明依赖（npm semver / github release / .dlient 直链）----
+
+/** 极简 tar 解析（ustar；npm 包产物）：仅返回常规文件（name 已去 ./ 前缀） */
+function parseTar(buffer: Buffer): Array<{ name: string; data: Buffer }> {
+  const readField = (block: Buffer, offset: number, len: number): string => {
+    const end = block.indexOf(0, offset)
+    const to = end >= offset && end < offset + len ? end : offset + len
+    return block.subarray(offset, to).toString('utf-8')
+  }
+  const files: Array<{ name: string; data: Buffer }> = []
+  let offset = 0
+  while (offset + 512 <= buffer.length) {
+    const block = buffer.subarray(offset, offset + 512)
+    if (block.every((b) => b === 0)) break
+    const name = readField(block, 0, 100)
+    const prefix = readField(block, 345, 155)
+    const size = parseInt(readField(block, 124, 12).trim() || '0', 8) || 0
+    const typeflag = String.fromCharCode(block[156])
+    const fullName = `${prefix ? `${prefix}/` : ''}${name}`.replace(/^\.\//, '')
+    const dataStart = offset + 512
+    offset = dataStart + Math.ceil(size / 512) * 512
+    if ((typeflag === '0' || typeflag === '\0') && fullName && !fullName.endsWith('/')) {
+      files.push({ name: fullName, data: Buffer.from(buffer.subarray(dataStart, dataStart + size)) })
+    }
+    if (name === '' && block.every((b) => b === 0)) break
+  }
+  return files
+}
+
+/** 去掉 npm 包顶层目录（通常 'package/'）；无公共顶层目录时原样返回 */
+function stripTarballRoot(files: Array<{ name: string; data: Buffer }>): Array<{ name: string; data: Buffer }> {
+  const first = files[0]?.name
+  const seg = first?.split('/')[0]
+  const under = !!seg && files.every((f) => f.name.startsWith(`${seg}/`))
+  if (!under) return files
+  return files.map((f) => ({ name: f.name.slice(seg.length + 1), data: f.data }))
+}
+
+/** 从 npm 包内容中挑 .dlient 产物：包根目录优先，其次 pack/、dist/（spec：根目录或 dist/pack 目录内） */
+function pickDlientFromNpmPkg(files: Array<{ name: string; data: Buffer }>): Buffer | null {
+  const stripped = stripTarballRoot(files)
+  const candidates = stripped.filter((f) => f.name.toLowerCase().endsWith('.dlient'))
+  if (candidates.length === 0) return null
+  const rank = (name: string): number => {
+    if (!name.includes('/')) return 0 // 根目录
+    if (name.startsWith('pack/')) return 1
+    if (name.startsWith('dist/')) return 2
+    return 3
+  }
+  candidates.sort((a, b) => rank(a.name) - rank(b.name))
+  return candidates[0].data
+}
+
+/** 执行 npm 命令（沿用内置 node 运行时 + 地区 registry），捕获 stdout/stderr */
+async function runNpmCapture(
+  args: string[],
+  cwd: string,
+  timeoutMs = 180000,
+): Promise<{ ok: boolean; stdout: string; stderr: string; code: number | null }> {
+  const rt = await resolveRuntime()
+  if (rt.source === 'none' || !rt.node) return { ok: false, stdout: '', stderr: 'node runtime not available', code: null }
+  const npmArgs = await withNpmRegistry(args)
+  const cmd = rt.npmCli && rt.source === 'bundled' ? rt.node : process.platform === 'win32' ? 'npm.cmd' : 'npm'
+  const finalArgs = rt.npmCli && rt.source === 'bundled' ? [rt.npmCli, ...npmArgs] : npmArgs
+  return await new Promise((resolve) => {
+    const child = execFile(cmd, finalArgs, { cwd, timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (!err) return resolve({ ok: true, stdout: String(stdout ?? ''), stderr: String(stderr ?? ''), code: 0 })
+      const code = typeof (err as { code?: unknown }).code === 'number' ? ((err as { code: number }).code) : null
+      resolve({ ok: false, stdout: String(stdout ?? ''), stderr: String(stderr ?? ''), code })
+    })
+    child.on('error', (e) => resolve({ ok: false, stdout: '', stderr: e.message, code: null }))
+  })
+}
+
+/** 超时信号（AbortController；兼容性比 AbortSignal.timeout 更好） */
+function fetchTimeoutSignal(ms: number): AbortSignal {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), ms)
+  ctrl.signal.addEventListener('abort', () => clearTimeout(timer), { once: true })
+  return ctrl.signal
+}
+
+/** 通用下载到临时目录文件（fetch 跟随重定向；失败抛错误文案） */
+async function downloadToTempFile(url: string, dir: string, name: string): Promise<string> {
+  const res = await fetch(url, {
+    redirect: 'follow',
+    headers: { 'User-Agent': 'dlient-open' },
+    signal: fetchTimeoutSignal(180000),
+  }).catch(() => null)
+  if (!res || !res.ok || !res.body) {
+    throw new Error(`下载失败（HTTP ${res?.status ?? 'ERR'} ${res?.statusText ?? url}）`)
+  }
+  const buf = Buffer.from(await res.arrayBuffer())
+  const out = join(dir, name)
+  await writeFile(out, buf)
+  return out
+}
+
+/** preInstall → npm（semver）：npm pack 拉包 → tar 内根/dist/pack 找 .dlient → 落临时文件 */
+async function resolveNpmDepToFile(depId: string, spec: string): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'dlient-npm-'))
+  try {
+    const npmSpec = spec === 'latest' || spec === '*' || !spec ? depId : `${depId}@${spec}`
+    const pack = await runNpmCapture(['pack', npmSpec, '--pack-destination', dir, '--no-audit', '--no-fund', '--loglevel', 'error'], dir)
+    if (!pack.ok) throw new Error(`npm 拉取失败（${depId}@${spec}）：${(pack.stderr || pack.stdout).slice(-300)}`)
+    const tgzFiles = (await readdir(dir)).filter((f) => f.endsWith('.tgz'))
+    if (tgzFiles.length === 0) throw new Error(`npm 拉取失败（${depId}@${spec}）：未得到 tarball`)
+    const tgz = await readFile(join(dir, tgzFiles[0]))
+    const tar = await gunzipAsync(tgz)
+    const content = pickDlientFromNpmPkg(parseTar(tar))
+    if (!content) throw new Error(`npm 包 ${depId} 内未找到 .dlient 产物（已查找包根目录及 dist/ pack/ 目录）`)
+    const out = join(dir, `${depId}.dlient`)
+    await writeFile(out, content)
+    return out
+  } catch (err) {
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined)
+    throw err
+  }
+}
+
+/** preInstall → github：取仓库最新 Release 中名为 *.dlient 的资产并下载 */
+async function resolveGithubDepToFile(repoUrl: string): Promise<string> {
+  const m = /github\.com\/([^/?#]+)\/([^/?#]+)/i.exec(repoUrl)
+  if (!m) throw new Error(`GitHub 地址无法解析：${repoUrl}`)
+  const owner = m[1]
+  const repo = m[2].replace(/\.git$/, '')
+  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/releases/latest`
+  const res = await fetch(apiUrl, {
+    headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'dlient-open', 'X-GitHub-Api-Version': '2022-11-28' },
+    signal: fetchTimeoutSignal(60000),
+  }).catch(() => null)
+  if (!res || !res.ok) {
+    throw new Error(`GitHub Release 获取失败（HTTP ${res?.status ?? 'ERR'}）：请确认仓库 ${owner}/${repo} 存在且已发布 Release`)
+  }
+  const json = (await res.json()) as { assets?: Array<{ name?: string; browser_download_url?: string }> }
+  const asset = (json.assets ?? []).find((a) => a.name?.toLowerCase().endsWith('.dlient'))
+  if (!asset?.browser_download_url) {
+    throw new Error(`仓库 ${owner}/${repo} 的最新 Release 未包含 .dlient 安装包资产`)
+  }
+  const dir = await mkdtemp(join(tmpdir(), 'dlient-gh-'))
+  try {
+    return await downloadToTempFile(asset.browser_download_url, dir, `${repo}.dlient`)
+  } catch (err) {
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined)
+    throw err
+  }
+}
+
+/** preInstall → url：直接下载 .dlient 文件 */
+async function resolveUrlDepToFile(url: string): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'dlient-url-'))
+  try {
+    const name = url.split('/').pop()?.split('?')[0] || 'dep.dlient'
+    return await downloadToTempFile(url, dir, name.toLowerCase().endsWith('.dlient') ? name : 'dep.dlient')
+  } catch (err) {
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined)
+    throw err
+  }
+}
+
+/** 下载/解析一个 preInstall 依赖到 .dlient 临时文件并按需递归安装 */
+async function deepInstallDep(dep: ImportDepItem, visited: Set<string>): Promise<ImportResult> {
+  let tmpPath: string | null = null
+  try {
+    tmpPath =
+      dep.kind === 'npm'
+        ? await resolveNpmDepToFile(dep.id, dep.source)
+        : dep.kind === 'github'
+          ? await resolveGithubDepToFile(dep.source)
+          : await resolveUrlDepToFile(dep.source)
+    const r = await installPackageFile(tmpPath, visited)
+    return r.ok ? { ok: true, id: r.id, name: r.name, version: r.version } : r
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  } finally {
+    if (tmpPath) await rm(dirname(tmpPath), { recursive: true, force: true }).catch(() => undefined)
+  }
+}
+
+/** 核心导入（含深度安装）：先装自身 preInstall 依赖（visited 防环/去重），再解包落盘自身 */
+async function installPackageFile(filePath: string, visited: Set<string>): Promise<ImportResult> {
   const r = await parseImportFile(filePath)
   if ('error' in r) return { ok: false, error: r.error }
   const { parsed } = r
   const { pkg, d, id, name, version, entries } = parsed
-  const deps = requireDeps()
-  const targetDir = join(deps.pluginsRoot(), id)
+  visited.add(id)
+
+  // 0) 深度安装 preInstall 依赖（先装依赖后装自身；已安装 / 处理中的跳过）
+  for (const dep of parsePreInstall(d)) {
+    if (visited.has(dep.id)) continue
+    visited.add(dep.id)
+    if (requireDeps().listPlugins().some((p) => p.id === dep.id)) continue // 已装同 id：不覆盖
+    const depRes = await deepInstallDep(dep, visited)
+    if (!depRes.ok) return { ok: false, error: `依赖 ${dep.id} 安装失败：${depRes.error ?? ''}` }
+  }
 
   // 覆盖安装：先清旧目录（防产物残留）
+  const deps = requireDeps()
+  const targetDir = join(deps.pluginsRoot(), id)
   await rm(targetDir, { recursive: true, force: true })
   await writeEntriesToDir(targetDir, entries)
 
@@ -595,4 +843,9 @@ async function installImportFrom(filePath: string): Promise<ImportResult> {
   deps.reportInstalled([entry])
   deps.broadcastChange(id, 'installed')
   return { ok: true, id, name, version, exists: pkg.source === 'market' }
+}
+
+/** install：执行导入（深度安装依赖 + 解包落盘 → 原生模块 → 注册表 → 上报 → 广播）；filePath 来自 preview 确认 */
+async function installImportFrom(filePath: string): Promise<ImportResult> {
+  return installPackageFile(filePath, new Set<string>())
 }

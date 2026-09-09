@@ -93,39 +93,97 @@ function AppCard({
   )
 }
 
-/** 导入「权限确认」弹框正文：插件名/版本/描述 + 声明的宿主权限清单（描述按当前 locale 取，未知 key 兜底显示 key） */
-function ImportPreviewBody({
+type ImportReviewPerm = { key: string; level: string; description?: { 'zh-CN': string; 'en-US': string } | null }
+type ImportReviewDep = { id: string; source: string; kind: 'npm' | 'github' | 'url' }
+
+/**
+ * 导入确认弹框正文：插件名/版本/描述 + 「权限 / 依赖」两个 tab。
+ * - 权限：key（风险色点）+ 说明，两行一条
+ * - 依赖（manifest preInstall）：插件 id + 配置内容，两行一条；npm / github 行点击在浏览器打开对应页面查看
+ */
+function ImportReviewBody({
   preview,
 }: {
   preview: {
     name: string
     version: string
     description?: string
-    permissions: Array<{ key: string; level: string; description?: { 'zh-CN': string; 'en-US': string } | null }>
+    permissions: ImportReviewPerm[]
+    preInstall?: ImportReviewDep[]
   }
 }) {
   const { t, locale } = useI18n()
+  const [tab, setTab] = useState<'perms' | 'deps'>('perms')
   const loc = locale === 'en-US' ? 'en-US' : 'zh-CN'
+  const deps = preview.preInstall ?? []
+
+  const openDep = (dep: ImportReviewDep) => {
+    const url = dep.kind === 'npm' ? `https://www.npmjs.com/package/${encodeURIComponent(dep.id)}` : dep.source
+    void window.dlient.hostShell.openExternal(url).catch(() => undefined)
+  }
+
   return (
     <div className="dl-import-review">
       <p className="dl-import-review-meta">
         {preview.name} · v{preview.version}
       </p>
       {preview.description && <p className="dl-import-review-desc">{preview.description}</p>}
-      <p className="dl-import-review-head">{t(`${NS}.importPermsHead`)}</p>
-      {preview.permissions.length === 0 ? (
-        <p className="dl-import-review-empty">{t(`${NS}.importNoPerms`)}</p>
+
+      <div className="dl-import-tabs" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'perms'}
+          className={`dl-import-tab ${tab === 'perms' ? 'active' : ''}`}
+          onClick={() => setTab('perms')}
+        >
+          {t(`${NS}.importTabPerms`)}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'deps'}
+          className={`dl-import-tab ${tab === 'deps' ? 'active' : ''}`}
+          onClick={() => setTab('deps')}
+        >
+          {t(`${NS}.importTabDeps`)}
+        </button>
+      </div>
+
+      {tab === 'perms' ? (
+        preview.permissions.length === 0 ? (
+          <p className="dl-import-review-empty">{t(`${NS}.importNoPerms`)}</p>
+        ) : (
+          <ul className="dl-import-perms">
+            {preview.permissions.map((it) => {
+              const risk = it.level === 'dangerous' ? 'dangerous' : it.level === 'warn' ? 'warn' : 'default'
+              return (
+                <li key={it.key} className={`dl-import-perm dl-import-perm--${risk}`}>
+                  <span className="dl-import-perm-head">
+                    <span className={`dl-import-risk-dot dl-import-risk-dot--${risk}`} />
+                    <code className="dl-import-perm-key">{it.key}</code>
+                  </span>
+                  <span className="dl-import-perm-desc">{it.description ? it.description[loc] ?? it.key : it.key}</span>
+                </li>
+              )
+            })}
+          </ul>
+        )
+      ) : deps.length === 0 ? (
+        <p className="dl-import-review-empty">{t(`${NS}.importNoDeps`)}</p>
       ) : (
-        <ul className="dl-import-perms">
-          {preview.permissions.map((it) => {
-            const risk = it.level === 'dangerous' ? 'dangerous' : it.level === 'warn' ? 'warn' : 'default'
+        <ul className="dl-import-deps">
+          {deps.map((dep) => {
+            const clickable = dep.kind === 'npm' || dep.kind === 'github'
             return (
-              <li key={it.key} className={`dl-import-perm dl-import-perm--${risk}`}>
-                <span className="dl-import-perm-head">
-                  <span className={`dl-import-risk-dot dl-import-risk-dot--${risk}`} />
-                  <code className="dl-import-perm-key">{it.key}</code>
-                </span>
-                <span className="dl-import-perm-desc">{it.description ? it.description[loc] ?? it.key : it.key}</span>
+              <li
+                key={dep.id}
+                className={`dl-import-dep ${clickable ? 'dl-import-dep--link' : ''}`}
+                title={clickable ? String(t(`${NS}.importDepViewHint`)) : undefined}
+                onClick={clickable ? () => openDep(dep) : undefined}
+              >
+                <span className="dl-import-dep-name">{dep.id}</span>
+                <span className="dl-import-dep-src">{dep.source}</span>
               </li>
             )
           })}
@@ -450,7 +508,7 @@ export default function App() {
     const preview = res.preview
     void modal.confirm({
       title: t(`${NS}.importReviewTitle`, { name: preview.name, version: preview.version }),
-      description: <ImportPreviewBody preview={preview} />,
+      description: <ImportReviewBody preview={preview} />,
       width: 460,
       confirmBtn: t(`${NS}.importConfirm`),
       cancelBtn: t(`${NS}.importCancel`),
