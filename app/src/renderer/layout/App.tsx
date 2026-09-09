@@ -93,6 +93,42 @@ function AppCard({
   )
 }
 
+/** 导入「权限确认」弹框正文：插件名/版本/描述 + 声明的宿主权限清单（描述按当前 locale 取，未知 key 兜底显示 key） */
+function ImportPreviewBody({
+  preview,
+}: {
+  preview: {
+    name: string
+    version: string
+    description?: string
+    permissions: Array<{ key: string; level: string; description?: { 'zh-CN': string; 'en-US': string } | null }>
+  }
+}) {
+  const { t, locale } = useI18n()
+  const loc = locale === 'en-US' ? 'en-US' : 'zh-CN'
+  return (
+    <div className="dl-import-review">
+      <p className="dl-import-review-meta">
+        {preview.name} · v{preview.version}
+      </p>
+      {preview.description && <p className="dl-import-review-desc">{preview.description}</p>}
+      <p className="dl-import-review-head">{t(`${NS}.importPermsHead`)}</p>
+      {preview.permissions.length === 0 ? (
+        <p className="dl-import-review-empty">{t(`${NS}.importNoPerms`)}</p>
+      ) : (
+        <ul className="dl-import-perms">
+          {preview.permissions.map((it) => (
+            <li key={it.key} className="dl-import-perm">
+              <code className="dl-import-perm-key">{it.key}</code>
+              <span className="dl-import-perm-desc">{it.description ? it.description[loc] ?? it.key : it.key}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 /** 操作台（layout 自有页）：最近打开 + 已安装应用；两者皆空显示空状态 */
 function ConsolePage({
   recentApps,
@@ -373,22 +409,52 @@ export default function App() {
     [t, pinned, opened, togglePin, closeApp, openRequest, uninstallApp],
   )
 
-  /** 导入 .dlient 插件（首方通道：选文件 → 解包 → 落盘 → 注册 → 广播） */
-  const handleImport = useCallback(async () => {
-    try {
-      const res = await window.dlient.hostShell.importPlugin()
-      if (!res) return // 取消
+  /** 执行导入安装（preview 权限确认后）；成功/失败均提示并返回是否成功 */
+  const runImportInstall = useCallback(
+    async (filePath: string): Promise<boolean> => {
+      const res = await window.dlient.hostShell
+        .confirmImportPlugin(filePath)
+        .catch((err) => ({ ok: false as const, error: err instanceof Error ? err.message : String(err) }))
       if (res.ok) {
         MessagePlugin.success(String(t(`${NS}.importDone`, { name: res.name ?? res.id ?? '' })))
         reloadPlugins()
         if (res.id) void openRequest(res.id)
-      } else {
-        MessagePlugin.error(String(t(`${NS}.importFailed`, { reason: res.error ?? '' })))
+        return true
       }
+      MessagePlugin.error(String(t(`${NS}.importFailed`, { reason: res.error ?? '' })))
+      return false
+    },
+    [t, reloadPlugins, openRequest],
+  )
+
+  /** 导入 .dlient 插件：选文件 → 解析并弹「权限确认」框 → 确认后安装 */
+  const handleImport = useCallback(async () => {
+    let res: Awaited<ReturnType<typeof window.dlient.hostShell.previewImportPlugin>>
+    try {
+      res = await window.dlient.hostShell.previewImportPlugin()
     } catch (err) {
       MessagePlugin.error(String(t(`${NS}.importFailed`, { reason: err instanceof Error ? err.message : String(err) })))
+      return
     }
-  }, [t, reloadPlugins, openRequest])
+    if (!res) return // 取消文件选择
+    if (!res.ok || !res.preview) {
+      MessagePlugin.error(String(t(`${NS}.importFailed`, { reason: res.error ?? '' })))
+      return
+    }
+    const preview = res.preview
+    void modal.confirm({
+      title: t(`${NS}.importReviewTitle`, { name: preview.name, version: preview.version }),
+      description: <ImportPreviewBody preview={preview} />,
+      width: 460,
+      confirmBtn: t(`${NS}.importConfirm`),
+      cancelBtn: t(`${NS}.importCancel`),
+      onConfirm: async (ctx) => {
+        const ok = await runImportInstall(preview.filePath)
+        if (ok) ctx.close()
+        return ok
+      },
+    })
+  }, [t, runImportInstall])
 
   // 内容区活动应用（activePlugin 归属）：切换时同步宿主 webview 可见性归属
   useEffect(() => {

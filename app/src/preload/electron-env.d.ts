@@ -178,7 +178,25 @@ interface DlientBridge {
     }>
     nodejsInstall(version?: string): Promise<{ ok: boolean; version?: string; path?: string; error?: string }>
     nodejsProgress(): Promise<unknown>
-    importPlugin(): Promise<{ ok: boolean; id?: string; name?: string; version?: string; error?: string } | null>
+    /**
+     * 选择并解析 .dlient（不落盘）：返回插件信息与权限清单供用户确认；文件选择取消返回 null。
+     * 返回 { ok: true, preview } | { ok: false, error } | null
+     */
+    previewImportPlugin(): Promise<{
+      ok: boolean
+      error?: string
+      preview?: {
+        filePath: string
+        id: string
+        name: string
+        version: string
+        type?: string
+        description?: string
+        permissions: Array<{ key: string; level: string; description?: { 'zh-CN': string; 'en-US': string } | null }>
+      }
+    } | null>
+    /** 确认导入（解包落盘 → 注册表 → 广播）；filePath 来自 previewImportPlugin 返回的 preview.filePath */
+    confirmImportPlugin(filePath: string): Promise<{ ok: boolean; id?: string; name?: string; version?: string; error?: string }>
     uninstallPlugin(pluginId: string): Promise<{ ok: boolean; error?: string }>
     settingsGet(): Promise<{
       language?: 'zh-CN' | 'en-US'

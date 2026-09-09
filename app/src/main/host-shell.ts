@@ -18,6 +18,7 @@ import { getWindowController, popupNativeMenu } from './lib/app'
 import { webviewSetActivePlugin } from './lib/webview'
 import { checkBundled, checkLocal, getNodejsProgress, installNodejs, resolveRuntime, withNpmRegistry } from './nodejs'
 import { upsertInstalledEntry, removeInstalledEntry, type InstalledPluginEntry } from './installed-registry'
+import { listPluginCapabilities } from './lib/plugin'
 import { broadcastAppSetting, useSystemNativeTheme } from './lib/theme'
 import { atomicWriteFile, withFileLock } from './file-queue'
 
@@ -196,8 +197,11 @@ export function registerHostShell(deps: HostShellDeps): void {
     checkReadiness(String(pluginId ?? ''), (manifest ?? undefined) as { dependencies?: unknown; nodeVersion?: unknown } | undefined),
   )
 
-  // ---- .dlient 导入（layout「导入插件」入口）----
-  handle('import-plugin', () => importPlugin())
+  // ---- .dlient 导入（layout「导入插件」）：preview 解析 manifest + 权限清单 → 渲染层确认 → install ----
+  handle('preview-import-plugin', () => previewImportPlugin())
+  handle('install-import-plugin', (filePath: unknown) =>
+    typeof filePath === 'string' && filePath.length > 0 ? installImportFrom(filePath) : { ok: false, error: 'missing import file' },
+  )
 
   // 卸载（layout 右侧菜单「卸载」；移除目录 + 注册表 + 缓存 + 广播）
   handle('uninstall-plugin', async (pluginId: unknown) => {
@@ -456,82 +460,139 @@ async function npmInstall(pluginDir: string, args: string[]): Promise<{ ok: bool
   })
 }
 
-/** .dlient 导入：选文件 → 解包 → manifest 校验 → 落盘 → 原生模块 → 注册表 → 上报 → 广播 */
-async function importPlugin(): Promise<{
-  ok: boolean
-  id?: string
-  name?: string
-  version?: string
-  exists?: boolean
-  error?: string
-} | null> {
-  const deps = requireDeps()
+/** .dlient 导入：preview（选文件 + 解析 manifest + 权限清单）→ 渲染层权限确认 → install（解包落盘）。 */
+
+interface ParsedImport {
+  filePath: string
+  entries: ZipEntry[]
+  pkg: Record<string, unknown> & { version?: string; dlient?: Record<string, unknown> }
+  d: Record<string, unknown>
+  id: string
+  name: string
+  version: string
+}
+
+/** 读 .dlient 并做基础校验（manifest 存在 / id 合法 / 非 system），preview 与 install 共用；失败返回错误文案 */
+async function parseImportFile(filePath: string): Promise<{ parsed: ParsedImport } | { error: string }> {
+  try {
+    const buf = await readFile(filePath)
+    const entries = await extractZip(buf)
+    const root = commonRoot(entries)
+    const pkgEntry = entries.find((e) => e.name === `${root}package.json`) ?? entries.find((e) => e.name === 'package.json')
+    if (!pkgEntry) return { error: '.dlient 包中未找到 package.json' }
+    const pkg = JSON.parse(pkgEntry.data.toString('utf-8')) as ParsedImport['pkg']
+    const d = pkg.dlient
+    if (!d || typeof d !== 'object') return { error: '未找到有效的插件 manifest（package.json 的 dlient.id）' }
+    const id = String(d.id ?? '')
+    if (!id || !/^[a-z0-9-]+$/.test(id)) return { error: `插件 ID 不合法：${id || '(缺失)'}` }
+    if (d.system === true) return { error: '系统插件不允许通过导入安装' }
+    const version = String(d.version ?? pkg.version ?? '0.0.0')
+    const name = typeof d.name === 'string' ? d.name : (d.name as { default?: string } | undefined)?.default ?? id
+    return { parsed: { filePath, entries, pkg, d, id, name, version } }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+/** 选择 .dlient 文件（用户取消返回 null） */
+async function pickImportFile(): Promise<string | null> {
   const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
   const picked = await dialog.showOpenDialog(win, {
     title: '导入 .dlient 插件',
     properties: ['openFile'],
     filters: [{ name: 'dlient package', extensions: ['dlient'] }],
   }).catch(() => null)
-  const filePath = picked?.filePaths?.[0]
-  if (!filePath) return null // 取消
+  return picked?.filePaths?.[0] ?? null
+}
 
-  try {
-    const buf = await readFile(filePath)
-    const entries = await extractZip(buf)
-    const root = commonRoot(entries)
-    const pkgEntry = entries.find((e) => e.name === `${root}package.json`) ?? entries.find((e) => e.name === 'package.json')
-    if (!pkgEntry) return { ok: false, error: '.dlient 包中未找到 package.json' }
-    const pkg = JSON.parse(pkgEntry.data.toString('utf-8')) as Record<string, unknown> & { version?: string; dlient?: Record<string, unknown> }
-    const d = pkg.dlient
-    if (!d || typeof d !== 'object') return { ok: false, error: '未找到有效的插件 manifest（package.json 的 dlient.id）' }
-    const id = String(d.id ?? '')
-    if (!id || !/^[a-z0-9-]+$/.test(id)) return { ok: false, error: `插件 ID 不合法：${id || '(缺失)'}` }
-    if (d.system === true) return { ok: false, error: '系统插件不允许通过导入安装' }
+/** 权限展示项：key + 风险级别 + 本地化描述（未知 key 的 description 为 null，UI 按 key 兜底展示） */
+interface ImportPermItem {
+  key: string
+  level: string
+  description: { 'zh-CN': string; 'en-US': string } | null
+}
 
-    const version = String(d.version ?? pkg.version ?? '0.0.0')
-    const name = typeof d.name === 'string' ? d.name : (d.name as { default?: string } | undefined)?.default ?? id
-    const targetDir = join(deps.pluginsRoot(), id)
+type ImportResult = { ok: boolean; id?: string; name?: string; version?: string; exists?: boolean; error?: string }
+type ImportPreviewResult =
+  | { ok: true; preview: { filePath: string; id: string; name: string; version: string; type?: string; description?: string; permissions: ImportPermItem[] } }
+  | { ok: false; error: string }
+  | null
 
-    // 覆盖安装：先清旧目录（防产物残留）
-    await rm(targetDir, { recursive: true, force: true })
-    await writeEntriesToDir(targetDir, entries)
-
-    // 修正 manifest（source=local / system=false；不保留包内可能存在的签名相关字段语义）
-    const patched = { ...pkg, dlient: { ...(d as Record<string, unknown>), source: 'local', system: false } }
-    await writeFile(join(targetDir, 'package.json'), JSON.stringify(patched, null, 2), 'utf-8')
-
-    // 原生模块：声明 nativeModules 时先确保 node 运行时，再 npm install
-    const nativeModules = (d as Record<string, unknown>).nativeModules as { dependencies?: Record<string, string> } | undefined
-    if (nativeModules?.dependencies) {
-      const declErr = validateNativeModules(nativeModules)
-      if (declErr) return { ok: false, error: declErr }
-      const rt = await resolveRuntime(typeof d.nodeVersion === 'string' ? { version: String(d.nodeVersion) } : undefined)
-      if (rt.source === 'none') {
-        const ins = await installNodejs(typeof d.nodeVersion === 'string' ? String(d.nodeVersion) : undefined)
-        if (!ins.ok) return { ok: false, error: `Node.js 运行时安装失败：${ins.error ?? ''}` }
-      }
-      const npm = await npmInstall(targetDir, Object.entries(nativeModules.dependencies).map(([n, v]) => `${n}@${v}`))
-      if (!npm.ok) return { ok: false, error: `原生模块安装失败：${npm.error ?? ''}` }
-    }
-
-    // 注册表 + 上报 + 广播
-    const entry: InstalledPluginEntry = {
-      id,
-      name,
-      version,
-      type: (d.type as InstalledPluginEntry['type']) ?? 'ui',
-      source: 'local',
-      system: false,
-      icon: typeof d.icon === 'string' ? d.icon : undefined,
-      dist: typeof d.dist === 'string' ? d.dist : undefined,
-      path: targetDir,
-      addedAt: Date.now(),
-    }
-    await upsertInstalledEntry(entry)
-    deps.reportInstalled([entry])
-    deps.broadcastChange(id, 'installed')
-    return { ok: true, id, name, version, exists: pkg.source === 'market' }
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+/** preview：选文件 + 解析 manifest + 权限清单（不落盘）；用户取消文件选择返回 null */
+async function previewImportPlugin(): Promise<ImportPreviewResult> {
+  const filePath = await pickImportFile()
+  if (!filePath) return null
+  const r = await parseImportFile(filePath)
+  if ('error' in r) return { ok: false, error: r.error }
+  const { parsed } = r
+  const d = parsed.d
+  const rawPerms = d.permissions
+  const perms = Array.isArray(rawPerms) ? rawPerms.map((x) => String(x)) : []
+  const capByKey = new Map(listPluginCapabilities().map((c) => [c.key, c]))
+  const desc = d.description
+  return {
+    ok: true,
+    preview: {
+      filePath,
+      id: parsed.id,
+      name: parsed.name,
+      version: parsed.version,
+      type: typeof d.type === 'string' ? d.type : undefined,
+      description: typeof desc === 'string' ? desc : (desc as { default?: string } | undefined)?.default,
+      permissions: perms.map((key) => {
+        const meta = capByKey.get(key)
+        return { key, level: meta?.level ?? 'default', description: meta?.description ?? null }
+      }),
+    },
   }
+}
+
+/** install：执行导入（解包落盘 → 原生模块 → 注册表 → 上报 → 广播）；filePath 来自 preview 确认 */
+async function installImportFrom(filePath: string): Promise<ImportResult> {
+  const r = await parseImportFile(filePath)
+  if ('error' in r) return { ok: false, error: r.error }
+  const { parsed } = r
+  const { pkg, d, id, name, version, entries } = parsed
+  const deps = requireDeps()
+  const targetDir = join(deps.pluginsRoot(), id)
+
+  // 覆盖安装：先清旧目录（防产物残留）
+  await rm(targetDir, { recursive: true, force: true })
+  await writeEntriesToDir(targetDir, entries)
+
+  // 修正 manifest（source=local / system=false；不保留包内可能存在的签名相关字段语义）
+  const patched = { ...pkg, dlient: { ...d, source: 'local', system: false } }
+  await writeFile(join(targetDir, 'package.json'), JSON.stringify(patched, null, 2), 'utf-8')
+
+  // 原生模块：声明 nativeModules 时先确保 node 运行时，再 npm install
+  const nativeModules = d.nativeModules as { dependencies?: Record<string, string> } | undefined
+  if (nativeModules?.dependencies) {
+    const declErr = validateNativeModules(nativeModules)
+    if (declErr) return { ok: false, error: declErr }
+    const rt = await resolveRuntime(typeof d.nodeVersion === 'string' ? { version: String(d.nodeVersion) } : undefined)
+    if (rt.source === 'none') {
+      const ins = await installNodejs(typeof d.nodeVersion === 'string' ? String(d.nodeVersion) : undefined)
+      if (!ins.ok) return { ok: false, error: `Node.js 运行时安装失败：${ins.error ?? ''}` }
+    }
+    const npm = await npmInstall(targetDir, Object.entries(nativeModules.dependencies).map(([n, v]) => `${n}@${v}`))
+    if (!npm.ok) return { ok: false, error: `原生模块安装失败：${npm.error ?? ''}` }
+  }
+
+  // 注册表 + 上报 + 广播
+  const entry: InstalledPluginEntry = {
+    id,
+    name,
+    version,
+    type: (d.type as InstalledPluginEntry['type']) ?? 'ui',
+    source: 'local',
+    system: false,
+    icon: typeof d.icon === 'string' ? d.icon : undefined,
+    dist: typeof d.dist === 'string' ? d.dist : undefined,
+    path: targetDir,
+    addedAt: Date.now(),
+  }
+  await upsertInstalledEntry(entry)
+  deps.reportInstalled([entry])
+  deps.broadcastChange(id, 'installed')
+  return { ok: true, id, name, version, exists: pkg.source === 'market' }
 }

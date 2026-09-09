@@ -186,6 +186,17 @@
 .dl-section-count { font-size: 12px; color: var(--dlient-text-color-placeholder); }
 .dl-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
 
+/* 导入「权限确认」弹框正文（modal description 区内渲染） */
+.dl-import-review-meta { margin: 0 0 6px; font-weight: 600; color: var(--dlient-text-color-primary); word-break: break-all; }
+.dl-import-review-desc { margin: 0 0 10px; font-size: 13px; line-height: 1.6; color: var(--dlient-text-color-secondary); max-height: 88px; overflow-y: auto; word-break: break-word; }
+.dl-import-review-head { margin: 4px 0 6px; font-size: 13px; font-weight: 600; color: var(--dlient-text-color-primary); }
+.dl-import-review-empty { margin: 0; font-size: 13px; color: var(--dlient-text-color-secondary); }
+.dl-import-perms { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto; border: 1px solid var(--dlient-component-stroke-color); border-radius: 6px; }
+.dl-import-perm { display: flex; align-items: flex-start; gap: 10px; padding: 7px 10px; font-size: 13px; line-height: 1.5; }
+.dl-import-perm + .dl-import-perm { border-top: 1px solid var(--dlient-component-stroke-color); }
+.dl-import-perm-key { flex-shrink: 0; font-size: 12px; color: var(--dlient-brand-color); }
+.dl-import-perm-desc { color: var(--dlient-text-color-secondary); word-break: break-all; }
+
 /* 应用卡片（dlient 卡片布局：自定义内容区） */
 .dl-card { border: 1px solid var(--dlient-component-stroke-color); border-radius: 8px; background: var(--dl-fill-0); padding: 16px; }
 .dl-card-click { cursor: pointer; transition: border-color .15s, box-shadow .15s; }
