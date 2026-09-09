@@ -4,10 +4,12 @@
  * 结构（@dlient-open/ui 组件体系，样式走 tokens.css 的 --dlient-* 语义变量）：
  *   - 标题栏：logo 品牌 + 面包屑；右侧窗口操作（mask 渲染，hostShell.window*）
  *   - 活动栏（侧边导航）：
- *       · 第一个：操作台（layout 自有页）
+ *       · 第一个：操作台（layout 自有页；页头右上提供「导入插件」）
  *       · 中间：已打开的应用插件（点击切换；keep-alive 不销毁页面）
- *       · 底部：设置（内置页） / 导入插件
+ *       · 底部：设置（内置页）
  *   - 内容区：所有已打开的页面常驻渲染，用 display 控制显隐（切换不销毁）
+ *
+ * 导入 .dlient 插件入口位于操作台（console）页右上，活动栏不再放置 ＋ 号按钮。
  *
  * 开源版无 auth / 无插件市场 / 无 dev-tools：首方数据经 window.dlient.hostShell 获取；
  * 插件清单来自宿主已安装注册表（~/.dlient-open/plugins 目录扫描）。
@@ -127,8 +129,13 @@ function ConsolePage({
   return (
     <div className="dl-page-pad">
       <div className="dl-console-header">
-        <h1 className="dl-console-title">{t(`${NS}.console`)}</h1>
-        <p className="dl-console-sub">{t(`${NS}.consoleSub`)}</p>
+        <div className="dl-console-title-block">
+          <h1 className="dl-console-title">{t(`${NS}.console`)}</h1>
+          <p className="dl-console-sub">{t(`${NS}.consoleSub`)}</p>
+        </div>
+        <Button variant="default" onClick={() => onOpen('__import__')}>
+          {t(`${NS}.importTitle`)}
+        </Button>
       </div>
 
       {recentApps.length > 0 && (
@@ -567,16 +574,7 @@ export default function App() {
             )}
           </div>
 
-          {/* 底部：设置（内置页） / 导入插件 */}
-          <button
-            type="button"
-            aria-label={String(t(`${NS}.importTitle`))}
-            title={String(t(`${NS}.importTitle`))}
-            className="dl-rail-btn"
-            onClick={() => void handleImport()}
-          >
-            <span className="dl-rail-icon dl-rail-import">＋</span>
-          </button>
+          {/* 底部：设置（内置页）；导入插件入口在操作台页右上 */}
           <button
             type="button"
             aria-label={String(t(`${NS}.console`))}

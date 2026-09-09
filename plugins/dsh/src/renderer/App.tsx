@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Button, Empty, Icon, Loading, PluginView, Space, useDlientApi, Webview, isApiOk, resolveApiMsg, defaultApiErrorMsg } from '@dlient-open/ui'
+import { Button, Empty, Icon, Loading, useDlientApi, Webview, isApiOk, resolveApiMsg, defaultApiErrorMsg } from '@dlient-open/ui'
 import { useI18n } from '@dlient-open/i18n'
 import './styles.css'
 import './i18n'
@@ -38,7 +38,6 @@ export default function App() {
   const api = useDlientApi()
   const { t, locale } = useI18n()
   const [status, setStatus] = useState<DshStatus>({ phase: 'idle' })
-  const [reloadKey, setReloadKey] = useState(0)
   const [viewId, setViewId] = useState<string | null>(null)
   const startingRef = useRef(false)
 
@@ -104,13 +103,6 @@ export default function App() {
       })
   }
 
-  const stop = () => {
-    void api.request('dsh.stop').then((res) => {
-      if (!isApiOk(res)) console.error('[dsh] stop failed:', res)
-    })
-    setStatus({ phase: 'idle' })
-  }
-
   // 挂载时：查 worker 当前状态 —— 若已停止过（startedOnce）则不自动重启，显示「已停止」；
   // 首次打开（idle 且未启动过）自动启动 dsh web 服务；
   // 查询超时（3s）/ 失败时兜底直接启动（与旧行为一致，避免「无反应」）
@@ -142,36 +134,9 @@ export default function App() {
 
   return (
     <div className="dsh-root">
-      <header className="dsh-toolbar">
-        <span className={`dsh-dot dsh-dot-${status.phase}`} />
-        <span className="dsh-status-text">{statusText(status, t)}</span>
-        {status.phase === 'ready' && (
-          <Space size={6}>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setReloadKey((k) => k + 1)}
-            >
-              <Icon name="refresh" />
-              {t(`${NS}.reload`)}
-            </Button>
-            <Button size="sm" variant="outline" onClick={stop}>
-              {t(`${NS}.stop`)}
-            </Button>
-          </Space>
-        )}
-        {(status.phase === 'error' || status.phase === 'idle') && (
-          <Button size="sm" variant="default" onClick={start}>
-            <Icon name="refresh" />
-            {t(`${NS}.retry`)}
-          </Button>
-        )}
-      </header>
-
       {status.phase === 'ready' && status.url ? (
         <div className="dsh-body">
           <Webview
-            key={reloadKey}
             src={status.url}
             onViewReady={handleViewReady}
             onDidFinishLoad={handleDidFinishLoad}

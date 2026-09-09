@@ -47,7 +47,7 @@ addResourceBundle('plugin-layout', {
     starting: 'Starting...',
     open: 'Open',
     emptyTitle: 'No apps installed yet',
-    emptySub: 'Click "Import plugin" at the bottom-left to install a .dlient package',
+    emptySub: 'Click "Import plugin" in the top-right to install a .dlient package',
     openMarket: 'Import plugin',
     consoleSub: 'Opened apps stay in the left navigation for quick switching',
     recentTitle: 'Recently opened',

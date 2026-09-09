@@ -3,8 +3,6 @@ import { addResourceBundle } from '@dlient-open/i18n'
 // dsh 文案（命名空间用插件 id 保证唯一）
 addResourceBundle('dsh', {
   'zh-CN': {
-    reload: '刷新',
-    stop: '停止',
     retry: '重新启动',
     starting: 'DSH 正在启动…',
     error: '启动失败',
@@ -21,8 +19,6 @@ addResourceBundle('dsh', {
     idleHint: '服务已停止，点击「重新启动」再次启动',
   },
   'en-US': {
-    reload: 'Reload',
-    stop: 'Stop',
     retry: 'Restart',
     starting: 'Starting DSH…',
     error: 'Failed to start',

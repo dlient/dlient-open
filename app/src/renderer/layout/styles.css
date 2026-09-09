@@ -97,10 +97,7 @@
 .dl-rail-icon-sm { width: 18px; height: 18px; }
 /* 操作台按钮真彩图标（内置 layout 资源经 vite 打包为 URL，直接 <img> 渲染） */
 .dl-rail-img { object-fit: contain; }
-/* 导入插件按钮（「＋」字符图标） */
-.dl-rail-import { font-size: 18px; font-weight: 400; line-height: 1; text-align: center; color: var(--dlient-color-text-3); }
-.dl-rail-btn:hover .dl-rail-import { color: var(--dlient-text-color-primary); }
-/* 底部固定入口图标（设置 / 市场）：内联 SVG fill=currentColor —— 未选中 --dlient-color-text-3，选中主色调 */
+/* 底部固定入口图标（设置）：内联 SVG fill=currentColor —— 未选中 --dlient-color-text-3，选中主色调 */
 .dl-rail-fixed-icon { display: block; width: 18px; height: 18px; color: var(--dlient-color-text-3); }
 .dl-rail-btn:hover .dl-rail-fixed-icon { color: var(--dlient-text-color-primary); }
 .dl-rail-btn.active .dl-rail-fixed-icon { color: var(--dlient-brand-color); }
@@ -174,7 +171,9 @@
 .dl-page-pad { padding: 32px; }
 
 /* ===== 操作台（console）===== */
-.dl-console-header { margin-bottom: 28px; }
+/* 操作台页头：左标题 + 右「导入插件」按钮（导入入口由活动栏 ＋ 迁到此处） */
+.dl-console-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 28px; }
+.dl-console-title-block { min-width: 0; }
 .dl-console-title { font-size: 24px; font-weight: 700; margin: 0; color: var(--dlient-text-color-primary); }
 .dl-console-sub { margin: 6px 0 0; font-size: 13px; color: var(--dlient-text-color-secondary); }
 .dl-section { margin-bottom: 28px; }
