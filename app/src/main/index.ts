@@ -245,18 +245,23 @@ function loadInstalledRecords(): PluginRecord[] {
     seen.add(r.id)
   }
 
-  // 2) dev runtime 上报缓存（plugins.json 快照，source=dev）
+  // 2) 已安装目录扫描（userData/plugins；导入产物 source=local/market 落盘于此）。
+  //    必须优先于一切 dev 记录（dev runtime 上报 / dev 仓库）：否则同 id 的 dev 副本先占位去重，
+  //    会把导入的本地插件遮蔽掉（layout 又过滤 source=dev）→ 表现为重启后「上次导入的插件丢失、
+  //    需重新导入」。dev 副本仅作兜底，不抢占已导入插件。
+  if (existsSync(pluginsRootDir())) scanPluginDirInto(records, seen, pluginsRootDir())
+
+  // 3) dev runtime 上报缓存（plugins.json 快照，source=dev）
   for (const r of devPlugins?.externalRecords() ?? []) {
     if (seen.has(r.id)) continue
     records.push(r)
     seen.add(r.id)
   }
 
-  // 3) 兜底扫描插件根目录（market 未上报前的 system 插件 / 未上报的已安装插件 / dev 模式仓库内置）
-  //    源码树运行（dev server 或 dist-electron 直跑）时 <appRoot>/../plugins 必存在 → 一律扫描本地仓库；
+  // 4) dev 仓库兜底扫描（market 未上报前的 system 插件 / dev 模式仓库内置；同 id 已被上面占位则跳过）
+  //    源码树运行（dev server 或 dist-electron 直跑）时 <appRoot>/../plugins 必存在 → 兜底扫描本地仓库；
   //    打包版（app.asar）的 '..' 无 plugins 目录 → existsSync 为假，天然不扫描，保持发布语义。
   if (existsSync(repoPluginsRoot())) scanPluginDirInto(records, seen, repoPluginsRoot())
-  scanPluginDirInto(records, seen, pluginsRootDir())
   return records
 }
 
