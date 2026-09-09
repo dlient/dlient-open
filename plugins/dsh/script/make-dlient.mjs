@@ -6,10 +6,10 @@
 // 本脚本把「打包即 .dlient」一步完成（store 压缩 zip，纯 Node 无第三方依赖）。
 //
 // 用法（在插件目录执行，插件须已完成 npm run build 产出 <dist>）：
-//   node <dlient-open>/scripts/make-dlient.mjs                 # 产出 <id>-<version>.dlient
-//   node <dlient-open>/scripts/make-dlient.mjs --version 1.2.3 # 覆盖版本（同步改写包内 version）
-//   node <dlient-open>/scripts/make-dlient.mjs --name my.dlient
-//   node <dlient-open>/scripts/make-dlient.mjs --build         # 先执行插件自身 npm run build
+//   node script/make-dlient.mjs                 # 产出 <id>-<version>.dlient
+//   node script/make-dlient.mjs --version 1.2.3 # 覆盖版本（同步改写包内 version）
+//   node script/make-dlient.mjs --name my.dlient
+//   node script/make-dlient.mjs --build         # 先执行插件自身 npm run build
 //
 // 说明：
 //   - package.json 落包时被改写：dlient.source='local'、dlient.system=false（与导入端一致）；

@@ -21,7 +21,7 @@ npx @dlient-open/create-plugin my-plugin --native          # 原生模块：随�
 
 ## 2. 模板目录结构
 
-模板与开源 `plugin-demo` 模板一致（见 `dlient-open/packages/create-plugin/templates/plugin-demo`）：
+模板与开源 `plugin-demo` 模板一致（见 `app/packages/create-plugin/templates/plugin-demo`）：
 
 ```
 my-plugin/

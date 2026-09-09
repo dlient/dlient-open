@@ -21,7 +21,7 @@ The scaffold does **not** run `npm install` and does **not** create a git reposi
 
 ## 2. Template directory tree
 
-The template mirrors the open-source `plugin-demo` template (see `dlient-open/packages/create-plugin/templates/plugin-demo`):
+The template mirrors the open-source `plugin-demo` template (see `app/packages/create-plugin/templates/plugin-demo`):
 
 ```
 my-plugin/
