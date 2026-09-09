@@ -88,7 +88,7 @@ dlient-open/
 └─ skills/              plugin-development skills (English + 简体中文)
 ```
 
-- **Main process**: windows, the `dlientV3://` protocol, plugin registry, host-api executor, permission checks, local signing and verification.
+- **Main process**: windows, the `dlientOpen://` protocol, plugin registry, host-api executor, permission checks, local signing and verification.
 - **Worker**: one Node process per plugin (solo or shared pool). Privileged operations never touch the OS directly — they go through host-api, which the main process validates.
 - **UI**: React rendered by the host; plugin bundles are loaded by SystemJS and share `@dlient-open/ui` / `@dlient-open/i18n`.
 - **Built-in pages**: Console（操作台）and Settings are part of the host (`layout` / `setting` / `nodejs`), not plugins.

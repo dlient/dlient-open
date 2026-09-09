@@ -5,7 +5,7 @@
  *  1. syncFromDevRuntime：dev runtime 上报完整 dev 清单后，宿主仅更新目录缓存；
  *     默认不启动 worker/watcher（由 dev-runtime 预览/刷新流程显式启停），
  *     移除条目时停止已运行的 worker + 热重载 watch（worker.js → 重启；remoteEntry/assets → 广播重载）。
- *  2. getDirInfo：协议层（dlientV3://plugin/<id>@dev/...）定位 dev 插件实际目录。
+ *  2. getDirInfo：协议层（dlientOpen://plugin/<id>@dev/...）定位 dev 插件实际目录。
  *  3. selectDirectory：目录选择对话框（host-api plugins.dev.selectDirectory）。
  *  4. externalRecords：从内存清单生成 PluginRecord，供 loadInstalledRecords 合并 dev 缓存。
  */

@@ -109,7 +109,7 @@ npm run build        # UI → dist/remoteEntry.js（+ style.css/assets）；work
 | --- | --- |
 | `permission denied … -2107` | 缺 `manifest.permissions` 或资源授权。补权限，或在弹框 / 权限页授权。 |
 | worker 起不来 / 一直 `starting` | `dist/worker.js` 未构建，或 worker 阻塞事件循环（心跳超时）。 |
-| UI 空白 / 无样式 | `remoteEntry.js` 未构建；检查 `dist/` 与 `dlientV3://` 资源日志。 |
+| UI 空白 / 无样式 | `remoteEntry.js` 未构建；检查 `dist/` 与 `dlientOpen://` 资源日志。 |
 | 类型推断与预期不符 | `type` 缺省为 `app`；`full`/`worker`/`ui` 请显式声明。 |
 | 导入因缺依赖失败 | 插件声明了未安装的 `preInstall` / `dependencies` 插件；先导入对应依赖（或导入会深度安装依赖的 `.dlient`）。 |
 | 插件对 `nodejs` 显示「未就绪」 | `dlient.nodeVersion`（或 nodejs 依赖）触发就绪门控；宿主自动安装内置 Node 运行时，或经 Node 对话框安装。 |

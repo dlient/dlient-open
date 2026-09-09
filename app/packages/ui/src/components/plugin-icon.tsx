@@ -1,7 +1,7 @@
 import * as React from 'react'
 
 export interface PluginIconProps {
-  /** 插件 id（用于 dlientV3://plugin/<id>/<icon> 资源定位） */
+  /** 插件 id（用于 dlientOpen://plugin/<id>/<icon> 资源定位） */
   pluginId: string
   /** 插件图标（manifest dlient.icon）：相对插件根目录路径字符串；缺省显示兜底首字母 */
   icon?: string
@@ -21,11 +21,11 @@ export interface PluginIconProps {
  */
 export function PluginIcon({ pluginId, icon, name = '', size = 36, active = true, className }: PluginIconProps) {
   const [failed, setFailed] = React.useState(false)
-  // 图标资源定位：http(s) 绝对 URL（服务端图标）直接用；相对路径走 dlientV3 协议
+  // 图标资源定位：http(s) 绝对 URL（服务端图标）直接用；相对路径走 dlientOpen 协议
   const url = icon && !failed
     ? /^https?:\/\//i.test(icon)
       ? icon
-      : `dlientV3://plugin/${pluginId}/${icon}`
+      : `dlientOpen://plugin/${pluginId}/${icon}`
     : null
   return (
     <span

@@ -109,7 +109,7 @@ Installed plugins live in `~/.dlient-open/plugins/`; the host user-data root is 
 | --- | --- |
 | `permission denied … -2107` | Missing `manifest.permissions` entry or resource grant. Add the permission or authorize through the dialog / grant page. |
 | Worker never starts / status `starting` forever | Build missing `dist/worker.js`, or worker blocks the event loop (heartbeat timeout). |
-| UI blank / styles missing | `remoteEntry.js` not built; check `dist/` and the `dlientV3://` asset log lines. |
+| UI blank / styles missing | `remoteEntry.js` not built; check `dist/` and the `dlientOpen://` asset log lines. |
 | Type inference surprising | `type` defaults to `app`; declare `type` explicitly for `full` / `worker` / `ui`. |
 | Import fails on a missing dependency | The plugin declares `preInstall` / `dependencies` for a plugin that is not installed; import that dependency first (or use a `.dlient` that brings it via deep install). |
 | Plugin shows "not ready" for `nodejs` | `dlient.nodeVersion` (or a `nodejs` dependency) triggers readiness gating; the host auto-installs the bundled Node runtime, or you install it via the Node dialog. |

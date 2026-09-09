@@ -58,7 +58,7 @@ export const RendererChannels = {
   /** 渲染层 → 主进程：清空本插件自有日志（view_id；LogViewer 删除图标用，只清自己） */
   CLEAR_PLUGIN_LOGS: 'render:clear-plugin-logs',
   /** 渲染层 → 主进程：宿主壳全局捕获的未处理前端错误（渲染层自身监听 window error/unhandledrejection；
-   *  主进程从错误栈解析所属插件 dlientV3://plugin/<id>/ 帧并写入该插件日志；解析失败回退主进程 renderer 日志） */
+   *  主进程从错误栈解析所属插件 dlientOpen://plugin/<id>/ 帧并写入该插件日志；解析失败回退主进程 renderer 日志） */
   CAPTURED_ERROR: 'render:captured-error',
   /** 主进程 → 独立确认视图：弹框请求（requestId + dialog + theme/locale + data；dialog/preload 桥，插件不可达） */
   DIALOG_REQUEST: 'dialog:request',

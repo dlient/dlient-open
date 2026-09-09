@@ -331,10 +331,10 @@ export function registerBridge(runtime: DlientRuntime, opts: BridgeOptions): voi
 
   // ---- 宿主壳全局捕获的未处理前端错误（render:captured-error）----
   // 共享渲染进程内 window error/unhandledrejection 不含插件归属：主进程从错误栈首个
-  // dlientV3://plugin/<id>/ 帧解析目标（含 '@dev' 实例），白名单校验（当前登记视图 / 已安装清单）
+  // dlientOpen://plugin/<id>/ 帧解析目标（含 '@dev' 实例），白名单校验（当前登记视图 / 已安装清单）
   // 通过才写入该插件日志（level=error）；未命中或非白名单 → 忽略，由现有渲染层 console-message
   // 转发进主进程 [renderer:error] 兜底（不会把任意栈文本写进任意插件日志）。
-  const CAPTURED_PLUGIN_ID_RE = /dlientV3:\/\/plugin\/([^/?#]+)/i
+  const CAPTURED_PLUGIN_ID_RE = /dlientOpen:\/\/plugin\/([^/?#]+)/i
   const CAPTURED_KINDS = new Set(['error', 'unhandledrejection'])
   function isKnownCapturedTarget(pluginId: string): boolean {
     const base = pluginId.replace(/@dev$/, '')

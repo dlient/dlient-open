@@ -33,7 +33,7 @@ export interface PermissionDialogItem {
   scope?: string[]
   /** 图标类型：fs / net / cmd / log / plugin（缺省按 kind/method 文本推断） */
   icon?: string
-  /** 直接可加载的图标 URL（如目标插件 dlientV3://plugin/<id>/<icon>；优先于 icon 类型） */
+  /** 直接可加载的图标 URL（如目标插件 dlientOpen://plugin/<id>/<icon>；优先于 icon 类型） */
   iconSrc?: string
   method?: string
 }

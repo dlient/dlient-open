@@ -1,9 +1,9 @@
 /**
- * Protocol - dlientV3:// 自定义协议解析与磁盘映射（特权 scheme 配置须在 app.whenReady 前注册）。
+ * Protocol - dlientOpen:// 自定义协议解析与磁盘映射（特权 scheme 配置须在 app.whenReady 前注册）。
  */
 
 // URL scheme 大小写不敏感，代码内统一小写
-export const PROTOCOL_NAME = 'dlientv3'
+export const PROTOCOL_NAME = 'dlientopen'
 
 export function parseDlientUrl(url: string): { pluginId: string; path: string } | null {
   try {

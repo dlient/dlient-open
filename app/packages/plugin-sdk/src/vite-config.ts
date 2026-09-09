@@ -28,7 +28,7 @@ export function createPluginViteConfig(options: PluginViteConfigOptions): UserCo
       react(),
       // System.register 格式的 JS 不产出 CSS 引用（esm 会有 import './x.css'），而插件的
       // remoteEntry.js 由宿主经 SystemJS 动态加载（无 HTML 流程）。这里把 CSS 保留为
-      // 独立文件，并在入口 chunk 注入 <link>：样式经 dlientV3:// 协议加载；CSS 内 url()
+      // 独立文件，并在入口 chunk 注入 <link>：样式经 dlientOpen:// 协议加载；CSS 内 url()
       // 相对路径由浏览器按 CSS 文件位置解析，可正确引用插件内资源（不内联、无需重写）。
       {
         name: 'dlient:css-link',
@@ -45,7 +45,7 @@ export function createPluginViteConfig(options: PluginViteConfigOptions): UserCo
           // 版本戳：dev 热重载 / 插件升级后 href 变化，避免浏览器缓存旧 style.css。
           // 同源 link 用唯一 id 标识，每次注入先移除旧的：热重载多次执行时避免累积多个
           // stylesheet 导致旧样式残留叠加。
-          entry.code += `\n;(function(){var prev=document.getElementById('dlient-css-${pluginId}');if(prev)prev.remove();var l=document.createElement('link');l.id='dlient-css-${pluginId}';l.rel='stylesheet';l.href='dlientV3://plugin/${pluginId}/dist/${css.fileName}?v=${Date.now()}';document.head.appendChild(l);})();`
+          entry.code += `\n;(function(){var prev=document.getElementById('dlient-css-${pluginId}');if(prev)prev.remove();var l=document.createElement('link');l.id='dlient-css-${pluginId}';l.rel='stylesheet';l.href='dlientOpen://plugin/${pluginId}/dist/${css.fileName}?v=${Date.now()}';document.head.appendChild(l);})();`
         },
       },
     ],
@@ -56,7 +56,7 @@ export function createPluginViteConfig(options: PluginViteConfigOptions): UserCo
       emptyOutDir: false,
       target: 'esnext',
       // 方案 build.md 2.2：UI 端 JS 仅压缩（不混淆——System.register 结构 / import map 裸依赖
-      // / 入口导出会被混淆器破坏）。产物始终不带 sourcemap，避免源码经 dlientV3:// 泄露。
+      // / 入口导出会被混淆器破坏）。产物始终不带 sourcemap，避免源码经 dlientOpen:// 泄露。
       minify: 'esbuild',
       sourcemap: false,
       // CSS 压缩（esbuild）：vite 5 的 cssMinify 不跟随 minify，需显式开启。

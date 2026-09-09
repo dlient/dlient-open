@@ -1,5 +1,5 @@
 /**
- * 主进程入口（index.ts）：窗口 / 生命周期 / dlientV3:// 协议 / 核心插件引导 / 装配。
+ * 主进程入口（index.ts）：窗口 / 生命周期 / dlientOpen:// 协议 / 核心插件引导 / 装配。
  * 基座主进程职责仅两项：host-api（runtime/export.ts）+ 渲染层桥（bridge.ts）。
  */
 
@@ -56,7 +56,7 @@ export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
-// dlientV3:// 特权 scheme（必须在 app.whenReady() 之前注册）
+// dlientOpen:// 特权 scheme（必须在 app.whenReady() 之前注册）
 protocol.registerSchemesAsPrivileged([getProtocolConfig()])
 
 let mainWindow: BrowserWindow | null = null
@@ -354,7 +354,7 @@ function listInstalledPlugins(): Array<{
   path: string
 }> {
   // F2：dev 类型插件永远不进 layout —— 清单剔除 source==='dev'（dev 插件只在 dev runtime 打开）；
-  // worker 启动/协议解析不受影响（走 dev-plugins 独立列表与 dlientV3://<id>@dev 路径）。
+  // worker 启动/协议解析不受影响（走 dev-plugins 独立列表与 dlientOpen://<id>@dev 路径）。
   return loadInstalledRecords()
     .filter((r) => r.source !== 'dev')
     .map((r) => {
@@ -780,10 +780,10 @@ function ensureProtocolPluginVerified(dir: string, pluginId: string): Promise<bo
     .catch(() => false)
 }
 
-// dlientV3:// 协议磁盘映射：dlientV3://plugin/<id>/<path> → 插件目录注册表（外部 dev 插件优先）。
+// dlientOpen:// 协议磁盘映射：dlientOpen://plugin/<id>/<path> → 插件目录注册表（外部 dev 插件优先）。
 // 必须在 whenReady 后**最先**注册（先于 createWindow）：渲染层页面一旦开始加载就可能请求插件资源
 // （layout remoteEntry / 插件 UI / CSS / 图标），协议处理器未就绪会命中 ERR_UNKNOWN_URL_SCHEME →
-// SystemJS Error#3「Error loading dlientV3://…」，且一次性失败会让整个插件页永久停留错误态。
+// SystemJS Error#3「Error loading dlientOpen://…」，且一次性失败会让整个插件页永久停留错误态。
 // 注意：ESM 模块必须返回正确 MIME（text/javascript），否则浏览器拒绝执行 remoteEntry；
 //      net.fetch(file://) 在部分平台 MIME/流行为不稳，这里直接读文件构造 Response。
 // 处理器内 devPlugins/runtime 均为模块级变量（bootstrap 装配），此处按请求时刻懒解析。
@@ -949,8 +949,8 @@ if (!app.requestSingleInstanceLock()) {
     session.defaultSession.setPermissionCheckHandler((_wc, permission) =>
       permission === 'notifications' ? false : true,
     )
-    // dlientV3:// 协议处理器最先注册（先于 createWindow）：渲染层页面一旦开始加载就可能请求插件资源，
-    // 协议未就绪会命中 ERR_UNKNOWN_URL_SCHEME → SystemJS Error#3「Error loading dlientV3://…」
+    // dlientOpen:// 协议处理器最先注册（先于 createWindow）：渲染层页面一旦开始加载就可能请求插件资源，
+    // 协议未就绪会命中 ERR_UNKNOWN_URL_SCHEME → SystemJS Error#3「Error loading dlientOpen://…」
     registerDlientProtocol()
     console.log('[boot:3] registerDlientProtocol done')
     console.log('[boot:4] createWindow start')
@@ -988,11 +988,11 @@ function dumpLogsToDesktop(): void {
 }
 
 // dlientv3:// 注册为系统默认协议（Windows 注册表）
-app.removeAsDefaultProtocolClient('dlientv3')
+app.removeAsDefaultProtocolClient('dlientopen')
 if (!app.isPackaged && process.platform === 'win32') {
   // dev（未打包 electron.exe）：必须显式带 app 目录参数，否则唤起命令变成 electron.exe "<url>"，
   // 协议 URL 会被当作 app 路径 → 加载 default_app 空白窗口。
-  app.setAsDefaultProtocolClient('dlientv3', process.execPath, [app.getAppPath()])
+  app.setAsDefaultProtocolClient('dlientopen', process.execPath, [app.getAppPath()])
 } else {
-  app.setAsDefaultProtocolClient('dlientv3')
+  app.setAsDefaultProtocolClient('dlientopen')
 }

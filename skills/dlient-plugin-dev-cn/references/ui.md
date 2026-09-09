@@ -7,7 +7,7 @@ UI 是宿主渲染层经 SystemJS 加载的 React 包。没有 HTML 流程：宿
 - 配置预设：`@dlient-open/plugin-sdk/vite-config` 的 `createPluginViteConfig`。
 - `vite build` → **System.register** 输出 → `dist/remoteEntry.js`。
 - React 与 `@dlient-open/*` 外部化：宿主 SystemJS import map 解析为**共享单实例**。
-- CSS 单独成文件，经 `dlientV3://plugin/<插件id>/dist/<style>.css?v=<ts>` 注入（带版本戳）。CSS 内相对 `url()` 按 CSS 文件位置解析。
+- CSS 单独成文件，经 `dlientOpen://plugin/<插件id>/dist/<style>.css?v=<ts>` 注入（带版本戳）。CSS 内相对 `url()` 按 CSS 文件位置解析。
 - 热重载是产物级：`npm run dev:watch` 写 `dist`；重开 / 重载宿主后生效（无 dev server 端口）。
 
 ## 2. 使用共享组件——`@dlient-open/ui`（shadcn 风格）

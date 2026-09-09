@@ -7,7 +7,7 @@ The UI is a React bundle loaded by the host renderer through SystemJS. There is 
 - Config preset: `createPluginViteConfig` from `@dlient-open/plugin-sdk/vite-config`.
 - `vite build` → **System.register** output → `dist/remoteEntry.js`.
 - React and `@dlient-open/*` are externalized: the host's SystemJS import map resolves them to **single shared instances**.
-- CSS is emitted as one file and injected over `dlientV3://plugin/<pluginId>/dist/<style>.css?v=<ts>` (cache-busted). Relative `url()` inside CSS resolves against the CSS file location.
+- CSS is emitted as one file and injected over `dlientOpen://plugin/<pluginId>/dist/<style>.css?v=<ts>` (cache-busted). Relative `url()` inside CSS resolves against the CSS file location.
 - Hot reload is output-level: `npm run dev:watch` writes `dist`; changes take effect after the host is reopened / reloaded (no dev-server port).
 
 ## 2. Use shared components — `@dlient-open/ui` (shadcn-style)

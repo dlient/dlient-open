@@ -14,7 +14,7 @@ interface AppPluginInfo {
   id: string
   /** 本地化名称 */
   name: string
-  /** 图标：相对路径字符串（svg/png），相对 dlientV3://plugin/<id>/ */
+  /** 图标：相对路径字符串（svg/png），相对 dlientOpen://plugin/<id>/ */
   icon?: string
   /** 是否为系统级插件 */
   system?: boolean

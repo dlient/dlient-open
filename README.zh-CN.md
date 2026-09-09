@@ -88,7 +88,7 @@ dlient-open/
 └─ skills/              插件开发技能（简体中文 + English）
 ```
 
-- **主进程**：窗口、`dlientV3://` 协议、插件注册表、host-api 执行器、权限校验、本地签名/验签。
+- **主进程**：窗口、`dlientOpen://` 协议、插件注册表、host-api 执行器、权限校验、本地签名/验签。
 - **worker**：每个插件一个 Node 进程（solo / shared 池）。特权操作不直接碰系统能力，一律经 host-api 由主进程校验。
 - **UI**：React 渲染于宿主；插件包由 SystemJS 加载，共享 `@dlient-open/ui` / `@dlient-open/i18n`。
 - **内置页**：操作台 Console 与设置 Settings 属于宿主本体（`layout` / `setting` / `nodejs`），不是插件。

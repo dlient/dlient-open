@@ -105,7 +105,7 @@ export interface RuntimeConfirmDisplayItem {
   desc?: string
   /** 资源级确认：资源位置（文件/目录路径 / URL / 命令）展示文本 */
   resource?: string
-  /** 目标插件 icon 可加载 URL（dlientV3://plugin/<id>/<icon>）；跨插件确认用目标插件图标 */
+  /** 目标插件 icon 可加载 URL（dlientOpen://plugin/<id>/<icon>）；跨插件确认用目标插件图标 */
   iconSrc?: string
 }
 
@@ -207,11 +207,11 @@ export function createRuntime(options: CreateRuntimeOptions = {}): DlientRuntime
     return localizeText(manifest.name, getMainLocale(), pluginId)
   }
 
-  /** 目标插件 icon URL（跨插件确认弹框展示对方图标；dlientV3://plugin/<id>/<icon> 由协议映射插件根目录） */
+  /** 目标插件 icon URL（跨插件确认弹框展示对方图标；dlientOpen://plugin/<id>/<icon> 由协议映射插件根目录） */
   function pluginIconSrc(targetPluginId: string): string | undefined {
     const icon = manager.getController(targetPluginId)?.getManifest().icon
     if (typeof icon !== 'string' || !icon) return undefined
-    return `dlientV3://plugin/${encodeURIComponent(targetPluginId)}/${icon.replace(/^\/+/, '')}`
+    return `dlientOpen://plugin/${encodeURIComponent(targetPluginId)}/${icon.replace(/^\/+/, '')}`
   }
 
   /** 插件元信息（名称 i18n + 图标 URL；notification 默认值注入）；controller 缺失时按 locatePlugin 磁盘 manifest 兜底 */
@@ -224,7 +224,7 @@ export function createRuntime(options: CreateRuntimeOptions = {}): DlientRuntime
     if (!manifest) return null
     const name = localizeText(manifest.name, getMainLocale(), pluginId)
     const icon = typeof manifest.icon === 'string' && manifest.icon ? manifest.icon : undefined
-    return { name, icon: icon ? `dlientV3://plugin/${encodeURIComponent(pluginId)}/${icon.replace(/^\/+/, '')}` : undefined }
+    return { name, icon: icon ? `dlientOpen://plugin/${encodeURIComponent(pluginId)}/${icon.replace(/^\/+/, '')}` : undefined }
   }
 
   /** 方法说明（确认框文案；取 expose[method].description） */
@@ -734,7 +734,7 @@ export function createRuntime(options: CreateRuntimeOptions = {}): DlientRuntime
       // 别名，覆盖不到 record.path），本地调试读写 package.json 等不应依赖 plugins.dev.sync 的时序。
       // market/local **已安装**插件一律不授予自身安装目录（USER_DATA/plugins/<id>）任何权限：
       //  - 写：任何字节改动都会破坏 signature.json 验签（启动/协议双重闭环拒绝）；
-      //  - 读：UI/静态资源由宿主经 dlientV3:// 协议提供；native-host 由宿主代 spawn 官方 Node；
+      //  - 读：UI/静态资源由宿主经 dlientOpen:// 协议提供；native-host 由宿主代 spawn 官方 Node；
       //    插件自身无需经 fs 授权读取安装目录（宿主读取走自身白名单，与插件授权无关）。
       if (record.path && manifest.source === 'dev') {
         const selfDir = normalize(String(record.path))

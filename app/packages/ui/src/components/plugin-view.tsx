@@ -38,7 +38,7 @@ export interface PluginViewProps {
   module?: string
   /** 模块内要渲染的组件导出名（默认 'default'；具名导出如 'Webview'、'SettingsView' 等） */
   entry?: string
-  /** 覆盖入口 URL（默认 dlientV3://plugin/<id>/dist/remoteEntry.js） */
+  /** 覆盖入口 URL（默认 dlientOpen://plugin/<id>/dist/remoteEntry.js） */
   remoteEntryUrl?: string
   fallback?: React.ReactNode
   className?: string
@@ -72,8 +72,8 @@ function ensureSystemShared(): void {
   sharedInitialized = true
   const imports: Record<string, string> = {}
   for (const name of Object.keys(SHARED_MODULES)) {
-    // 共享 URL：dlientV3://shared/<key>，纯 registry 占位（协议 handle 不会命中，仅作 key）
-    const url = `dlientV3://shared/${name.replace(/\//g, '_').replace(/@/g, '')}`
+    // 共享 URL：dlientOpen://shared/<key>，纯 registry 占位（协议 handle 不会命中，仅作 key）
+    const url = `dlientOpen://shared/${name.replace(/\//g, '_').replace(/@/g, '')}`
     imports[name] = url
     SystemJS.set(url, SHARED_MODULES[name as keyof typeof SHARED_MODULES])
   }
@@ -97,7 +97,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 }
 
 // 动态加载插件 UI（System.register 产物，external 共享依赖走 registry）。
-// 瞬时失败重试：插件页首次加载偶发命中 dlientV3:// 协议未就绪 / 文件瞬时不可读（SystemJS Error#3，
+// 瞬时失败重试：插件页首次加载偶发命中 dlientOpen:// 协议未就绪 / 文件瞬时不可读（SystemJS Error#3，
 // 即 script 加载失败），一次性失败会让整个插件页永久停留错误态；短退避重试可自愈。
 async function loadPluginRemote(
   pluginId: string,
@@ -105,7 +105,7 @@ async function loadPluginRemote(
   cacheBust = 0,
 ): Promise<Record<string, unknown>> {
   ensureSystemShared()
-  const base = remoteEntryUrl ?? `dlientV3://plugin/${pluginId}/dist/remoteEntry.js`
+  const base = remoteEntryUrl ?? `dlientOpen://plugin/${pluginId}/dist/remoteEntry.js`
   const url = cacheBust ? `${base}?t=${cacheBust}` : base
   const MAX_ATTEMPTS = 3
   let lastErr: unknown
@@ -427,7 +427,7 @@ export function PluginView({
 
     async function load() {
       try {
-        // 加载前判定插件是否已安装：未安装给出明确提示（而非 dlientV3:// 协议 404 报错）。
+        // 加载前判定插件是否已安装：未安装给出明确提示（而非 dlientOpen:// 协议 404 报错）。
         // dev 实例（'<id>@dev'）豁免：dev 插件不进已安装清单（F2：只在 dev runtime 打开），
         // 由 dev runtime 保证其存在，跳过已安装检查。
         const isDevInstance = pluginId.endsWith('@dev')

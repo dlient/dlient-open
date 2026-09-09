@@ -45,7 +45,7 @@ console.log('[renderer] module loaded; rendering')
 }
 
 // 前端错误捕获：宿主壳在共享渲染进程内监听未处理的 error / unhandledrejection。
-// window 级事件不含插件归属 → 仅上报原文，主进程从错误栈的 dlientV3://plugin/<id>/ 帧解析归属
+// window 级事件不含插件归属 → 仅上报原文，主进程从错误栈的 dlientOpen://plugin/<id>/ 帧解析归属
 // （白名单校验）后写入该插件日志；解析失败自动回退主进程 [renderer:error]（现有 console-message 通道）。
 function reportCaptured(kind: 'error' | 'unhandledrejection', err: unknown): void {
   try {

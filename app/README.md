@@ -1,6 +1,6 @@
 # dlient（开源版宿主 · app）
 
-`dlient` 是一个**本地优先、插件驱动**的桌面 AI Agent 宿主。本目录是它的 **Electron 宿主**（main / preload / renderer），负责：窗口与 `dlientV3://` 协议、插件注册与导入、Node worker 池、React 插件 UI 加载、host-api 权限校验、以及安装包的本地签名/验签。
+`dlient` 是一个**本地优先、插件驱动**的桌面 AI Agent 宿主。本目录是它的 **Electron 宿主**（main / preload / renderer），负责：窗口与 `dlientOpen://` 协议、插件注册与导入、Node worker 池、React 插件 UI 加载、host-api 权限校验、以及安装包的本地签名/验签。
 
 > 仓库顶层介绍与快速上手见根目录 [README](../README.md)（中文 [README.zh-CN.md](../README.zh-CN.md)）。
 
