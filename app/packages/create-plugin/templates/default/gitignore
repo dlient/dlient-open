@@ -1,0 +1,35 @@
+# 本文件以 `gitignore` 命名存放：npm 发布时会剔除包内的 `.gitignore` 文件，
+# 若直接叫 `.gitignore`，从 npm 安装的脚手架生成的工程将没有忽略规则。
+# create-plugin 在生成工程时会把它改名为 `.gitignore`（见 bin/cli.mjs）。
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies & build outputs
+node_modules
+dist
+dist-ssr
+*.local
+
+# dlient plugin: 本地打包产物（npm run pack 产出免签名 .dlient，勿入库）
+pack/
+*.dlient
+plugin.asar
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

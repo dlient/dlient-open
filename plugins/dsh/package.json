@@ -1,6 +1,7 @@
 {
   "name": "@dlient-open/dsh",
-  "version": "0.2.6",
+  "version": "0.2.7",
+  "author": "Dlient",
   "license": "MIT",
   "description": "Run the DeepSeek Harness (dsh) AI agent inside dlient, with an embeddable chat surface for other plugins",
   "keywords": [

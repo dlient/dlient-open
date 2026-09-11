@@ -12,7 +12,7 @@
  *  - webContents 事件白名单（SAFE_EVENTS）→ 转发 webview 插件 worker（→ 前端组件）。
  */
 
-import { BrowserWindow, WebContentsView } from 'electron'
+import { app, BrowserWindow, WebContentsView } from 'electron'
 
 /** 允许透传的 webPreferences 字段（其余忽略，安全项强制） */
 const SAFE_PREFS = ['partition', 'userAgent']
@@ -214,7 +214,8 @@ export function createWebviewManager(options: WebviewManagerOptions): WebviewMan
 
     // webPreferences 白名单过滤 + 强制安全项（忽略插件传入的危险字段）
     const rawPrefs = (typeof o.webPreferences === 'object' && o.webPreferences !== null ? o.webPreferences : {}) as Record<string, unknown>
-    const prefs: Record<string, unknown> = { nodeIntegration: false, contextIsolation: true, sandbox: true, backgroundThrottling: false }
+    // 强制安全项 + 打包态禁用 DevTools（插件 webview 同样不允许打开调试工具；dev 下保持可用便于排障）
+    const prefs: Record<string, unknown> = { nodeIntegration: false, contextIsolation: true, sandbox: true, backgroundThrottling: false, devTools: !app.isPackaged }
     for (const k of SAFE_PREFS) {
       if (rawPrefs[k] !== undefined) prefs[k] = rawPrefs[k]
     }

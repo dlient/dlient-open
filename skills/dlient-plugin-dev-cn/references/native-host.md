@@ -21,7 +21,7 @@
 ## 2. 架构与数据流
 
 ```
-插件 worker（utilityProcess，沙箱、纯 JS）
+插件 worker（沙箱化、纯 JS）
    │  expose handler，如 my-plugin.query
    ▼
 worker 侧客户端：createNativeHostClient({ transport: createHostedTransport(handle) })

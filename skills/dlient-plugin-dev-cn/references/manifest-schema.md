@@ -68,6 +68,12 @@ Manifest 即插件 `package.json` 的 **`dlient`** 子对象。类型真源：`@
 **`expose`** **access 取值**（`|` = 或、`&` = 且）：
 `private`（仅自己）· `default`（宿主 + 自己）· `system`（system 插件——开源版**无 system 插件**，实际仅宿主内部）· `public`（任意插件）· `install-confirm`（安装时用户确认）· `runtime-confirm`（调用时用户三选确认：拒绝 / 仅本次允许 / 始终允许）。confirm 档须有有效授权记录才放行；被调用方可另暴露 `grant` 方法做程序化授权（返回 `allow` / `ask` / `deny` 三态）。
 
+**expose 策略**——尽量少暴露：仅当其它插件确实必须调用本插件，或用户明确要求时才添加 `expose` 条目。插件能暴露方法的**唯一条件**是它真的带 worker —— 即构建产物包含 `dist/worker.js`；manifest 的 `type` 与能否暴露无关（带 `dist/worker.js` 的 `app` / `ui` 插件**也能**暴露，注册 handler 的正是 worker；而没有 `dist/worker.js` 的插件不能暴露 —— 没有任何东西能承载该调用 → 宿主以 `WORKER_NOT_RUNNING`、`-2102` 拒绝）。有 worker 的插件（`full` / `worker`，或任何带 `dist/worker.js` 的插件）通常才声明 `expose`，且每个暴露的方法都需要 worker 中对应的 `rpc.registerHandler('<pluginId>.<method>', …)`。
+
+**保留的 `grant` key**——`expose` 可包含一个字面名为 `grant` 的条目，如 `"grant": { "description": "…", "access": "default" }`。宿主调用被调用方 worker 的 `grant` handler 做授权；它返回 `allow`（对该调用方 + 方法永久授权）/ `ask`（用户三选确认：拒绝 / 仅本次允许 / 始终允许）/ `deny`（拒绝）。推荐默认 **`ask`**；对涉及隐私、密码、密钥或 token 的一律返回 **`deny`**；仅对明确无害的方法用 `allow`。未暴露 `grant` 时，未授权的跨插件调用以 `ACCESS_DENIED` 失败。
+
+**密钥**——密码 / 密钥 / token 经 `app.crypt` 加密存储（权限 `app.crypt`）；绝不把明文密钥写入 `app.data`。
+
 ## 2. `permissions` — 怎么声明
 
 声明值 = 你要用的 host-api **key** 或其模块前缀组。开源模板示例：`app.crypt`、`app.data`、`app.event`、`app.getPath`、`app.notify`、`dialog.showOpenDialog`、`dialog.showSaveDialog`、`log`、`permission.request`、`plugin.invoke`，以及 `fs.read`、`child.spawn`、`nodejs.resolveRuntime` 等。每次 host-api 调用受两道门禁约束：
@@ -80,14 +86,14 @@ Manifest 即插件 `package.json` 的 **`dlient`** 子对象。类型真源：`@
 | 区域 | 声明值（示例） | 说明 |
 | --- | --- | --- |
 | 文件 | `fs.read` `fs.write` `fs.delete` `fs.listDir` `fs.watch` | `fs.stat` → `fs.read`；`fs.append`、`fs.copyDir`、`fs.lock`、`fs.unlock`、`fs.withLock`、`fs.mkdir` → `fs.write`；`fs.unwatch` → `fs.watch`（部分宿主方法复用 `fs.read`/`fs.write`——没有可声明的 `fs.stat` 权限） |
-| App | `app.data` `app.crypt` `app.window` `app.menu` `app.shortcut.register` `app.setAutoLaunch` `app.event` | 组权限覆盖 `app.data.*` / `app.crypt.*` / `app.window.*` 等。`app.getPath`、`app.notify` 以精确 key 声明，否则免权限 |
+| App | `app.data` `app.crypt` `app.window` `app.menu` `app.shortcut.register` `app.setAutoLaunch` `app.event` | 组权限覆盖 `app.data.*` / `app.crypt.*` / `app.window.*` 等。`app.getPath`、`app.notify` 没有组前缀，同样必须以精确 key 声明（无需资源授权，但声明是必须的） |
 | 剪贴板 | `clipboard.read` `clipboard.write` | 全部 `clipboard.*` |
 | 对话框 | `dialog.showOpenDialog` `dialog.showSaveDialog` | 对所选路径追加所申请的 `fs.*` 授权 |
 | 子进程 | `child.spawn` | SDK `child.spawn` / `child.execFile` 封装 |
 | Webview | （无） | `@dlient-open/ui` 的 `<Webview>` **无需声明权限**：使用 `PluginView` 注入的绑定本视图客户端（沙箱与 webPreferences / 方法 / 事件白名单由宿主保留） |
 | Node.js | `nodejs.checkLocal` `nodejs.checkBundled` `nodejs.resolveRuntime` `nodejs.install` | 内置运行时，不是插件 |
 | 插件 | `plugin.install` `plugin.setActive` | `plugin.invoke` / `plugin.requestGrant` 为基础能力（免声明；按 `dependencies` + 目标 `expose` 校验） |
-| 通知 | （无） | `notification.send`/`remove` 无需权限 |
+| 通知 | `notification.send` `notification.remove` `notification.removeGroup` | 无「免权限」：各自需要以精确 key 声明（或用 `notification` 组前缀）。仅 `notification.subscribe` / `notification.unsubscribe` 豁免（句柄归属校验，由句柄 `on()` 内部调用） |
 | 日志 | `log` | `log.write` 组前缀 |
 
 ## 3. 完整示例

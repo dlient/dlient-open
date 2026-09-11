@@ -5,34 +5,37 @@
 // `module.exports` is the Cordis client plugin (see the ui-theme bundle for
 // the same shape). It runs in the browser, so `window` / `document` /
 // `URLSearchParams` / `setTimeout` are available; it must NOT use JSX, import,
-// or TypeScript (React is used via require("react") + React.createElement).
+// or TypeScript. It registers no React components — every customisation is a
+// stylesheet plus runtime-service calls — so it needs no `react` require.
 //
 // The plugin customises the served `dsh web` surface into a single-column
 // `dsh chat` surface:
 //   1. Collapse the left sidebar so only the chat column renders.
 //   2. Read `?workspace=<path>` and open that workspace without a picker.
-//   3. Read `?theme=` / `?language=` / `?mode=` and apply them on load.
-//   4. Hide the product's hero agent-preset chip and render a dedicated
-//      two-option mode selector (标准模式 / PTC 模式) in the composer tool row.
-//   5. Export window.setTheme(id) / window.setLanguage(id) / window.setMode(mode).
+//   3. Read `?theme=` / `?language=` and apply them on load.
+//   4. Keep the product's OWN agent-preset chip as the mode selector. It is the
+//      `conversation.hero.agentPreset` seat (ui-agent-preset's AgentPresetSeat),
+//      rendered inside the hero workspace row, and the shell renders that row
+//      only in the hero phase — a blank session, or no session at all — which
+//      is exactly where choosing a preset still has an effect (a running
+//      session keeps the composition it began with). This plugin therefore
+//      renders no mode selector of its own, and no longer restricts the roster
+//      to `standard` + `code`: that needs a host-side allowlist in
+//      `dsh-agent-presets`, whose `roots` config is directory-level only.
+//   5. Export window.setTheme(id) / window.setLanguage(id).
 //   6. Hide the conversation top strip (breadcrumbs / session title / tabs)
 //      above the message list, so only messages + composer remain.
 //   7. Hide the in-flow session-history load-failure banner
 //      ("历史加载失败：…（internal）") when a session log cannot be loaded.
-//   8. When ?workspace= is present, hide the workspace-picker row that the
-//      hero/blank state would otherwise show above the composer input.
+//   8. When ?workspace= is present, hide only the hero row's workspace-picker
+//      trigger, leaving the product's agent-preset chip beside it usable.
 window.__ModuleLoader__.load({
   id: "@dlient/dsh-chat-ui",
   factory: (require) => {
     var module = { exports: {} };
     var exports = module.exports;
-    var React = require("react");
 
     var PLUGIN_ID = "@dlient/dsh-chat-ui";
-
-    // Agent presets (access modes) this chat surface permits. `standard` is the
-    // normal/普通 mode; `code` is the built-in "PTC 模式" (Code Mode SDK).
-    var ALLOWED_MODES = ["standard", "code"];
 
     // Collapse the left column entirely so only the chat column renders.
     //
@@ -52,11 +55,6 @@ window.__ModuleLoader__.load({
       ".pI_x6G_handle{display:none !important}"
     ].join("\n");
 
-    // Hide the product's hero agent-preset chip (AgentPresetSeat). This class
-    // is specific to the hero seat; the settings row and session-header label
-    // use their own classes and are unaffected.
-    var HIDE_PRODUCT_CHIP_CSS = ".cubgiG_seat{display:none !important}";
-
     // ConversationRoot.module.css (client-ui-conversation): the header strip
     // that sits ABOVE the message flow — breadcrumbs / session title /
     // utilities / chat tabs. Hide it so the surface shows only the message
@@ -67,27 +65,17 @@ window.__ModuleLoader__.load({
     // history cannot be loaded ("历史加载失败：<message>（internal）"). Hide it.
     var HIDE_HISTORY_ERROR_CSS = ".Md3f7G_openError{display:none !important}";
 
-    // The workspace-picker row that the hero state (no session / blank session)
-    // renders ABOVE the composer input: WorkspaceChip + the
-    // `conversation.hero.workspace` dropdown seat (+ hero agent-preset seat).
-    // When ?workspace= already fixed the workspace this picker is redundant,
-    // so the row (and its menu seat) are hidden.
-    var HIDE_WORKSPACE_PICKER_CSS = [
-      ".wSkVaW_heroWorkspaceRow{display:none !important}",
-      "[data-slot=\"conversation.hero.workspace\"]{display:none !important}"
-    ].join("\n");
-
-    // Style for the dedicated two-option mode selector (in the composer row).
-    var CHIP_CSS = [
-      ".dsh-chat-mode-chip{position:relative;display:inline-flex;align-items:center}",
-      ".dsh-chat-mode-trigger{min-height:28px;max-width:220px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:none;border-radius:24px;outline:none;align-items:center;gap:4px;padding:0 4px 0 8px;font-size:13px;font-weight:500;line-height:20px;display:inline-flex}",
-      ".dsh-chat-mode-trigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}",
-      ".dsh-chat-mode-menu{z-index:100;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu);min-width:220px;max-width:280px;box-shadow:var(--dsw-shadow-lv3);color:var(--dsw-alias-label-primary);border-radius:12px;flex-direction:column;padding:4px;display:flex;position:absolute;bottom:calc(100% + 6px);left:0;overflow:hidden}",
-      ".dsh-chat-mode-item{width:100%;min-height:44px;color:var(--dsw-alias-label-primary);text-align:left;cursor:pointer;background:0 0;border:none;border-radius:8px;flex-direction:column;align-items:flex-start;gap:2px;padding:8px 10px;font-size:14px;line-height:22px;display:flex}",
-      ".dsh-chat-mode-item:hover{background:var(--dsw-alias-interactive-bg-hover)}",
-      ".dsh-chat-mode-name{font-weight:500}",
-      ".dsh-chat-mode-desc{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}"
-    ].join("\n");
+    // The hero row the blank-session / no-session phase renders ABOVE the
+    // composer input (ConversationRoot.module.css `.wSkVaW_heroWorkspaceRow`,
+    // `display:flex`): WorkspaceChip (`.pXSMma_workspace`, HeroShell.module.css)
+    // + the `conversation.hero.workspace` menu seat + the
+    // `conversation.hero.agentPreset` chip. When ?workspace= already fixed the
+    // workspace, only the picker TRIGGER is redundant, so only that trigger is
+    // hidden — hiding the whole row would take the product's agent-preset chip
+    // (this surface's mode selector) down with it. The
+    // `conversation.hero.workspace` seat renders the picker menu alone, which
+    // cannot be opened once its trigger is gone.
+    var HIDE_WORKSPACE_CHIP_CSS = ".wSkVaW_heroWorkspaceRow>.pXSMma_workspace{display:none !important}";
 
     function injectStyle(css, label) {
       if (typeof document === "undefined") return function () {};
@@ -197,141 +185,38 @@ window.__ModuleLoader__.load({
       });
     }
 
-    /** Mode controller: read the roster, filter to standard + code, stage for the next blank session. */
-    function makeModeController(scope) {
-      var api = scope.get("connection").api;
-      var stage = null;
-      var listeners = [];
-      var snap = { current: "standard", options: [], open: false };
-      function set(patch) {
-        for (var k in patch) snap[k] = patch[k];
-        for (var i = 0; i < listeners.length; i++) listeners[i](snap);
-      }
-      function load() {
-        api.agentPresets.list({}).then(function (resp) {
-          if (!resp.result.ok) return;
-          var all = resp.result.value.presets || [];
-          var presets = all.filter(function (p) { return ALLOWED_MODES.indexOf(p.id) !== -1; });
-          var def = presets.find(function (p) { return p.isDefault; });
-          set({
-            options: presets.map(function (p) { return { id: p.id, name: p.name ?? p.id, description: p.description ?? "" }; }),
-            current: stage ?? def?.id ?? presets[0]?.id ?? "standard"
-          });
-        }).catch(function (e) { if (typeof console !== "undefined" && console.error) console.error("dsh-chat-ui: roster load failed", e); });
-      }
-      function applyStage() {
-        if (stage === null) return;
-        var sessions = scope.get("sessions");
-        var s = sessions.list.getSnapshot();
-        var cur = s.current;
-        if (cur === undefined) return;
-        var summary = s.byId[cur];
-        if (summary === undefined || !summary.blank || summary.agentPreset === stage) return;
-        var id = stage;
-        api.agentPresets.select({ sessionId: cur, agentPreset: id }).then(function (resp) {
-          if (resp.result.ok) sessions.noteAgentPreset(cur, resp.result.value.agentPreset);
-        });
-      }
-      function select(id) {
-        if (ALLOWED_MODES.indexOf(id) === -1) return;
-        stage = id;
-        set({ current: id, open: false });
-        try { applyStage(); } catch (e) {}
-        if (typeof window !== "undefined") { try { window.localStorage.setItem("dsh.chat.mode", id); } catch (e) {} }
-      }
-      function subscribe(fn) {
-        listeners.push(fn);
-        return function () { var i = listeners.indexOf(fn); if (i !== -1) listeners.splice(i, 1); };
-      }
-      return {
-        load: load,
-        select: select,
-        subscribe: subscribe,
-        read: function () { return snap; },
-        stageFrom: function (id) { if (ALLOWED_MODES.indexOf(id) !== -1) { stage = id; set({ current: id }); try { applyStage(); } catch (e) {} } }
-      };
-    }
-
     function apply(ctx) {
       try {
         ctx.effect(function () { return injectStyle(HIDE_SIDEBAR_CSS); }, "dsh-chat-ui: collapse-left-column");
-        ctx.effect(function () { return injectStyle(HIDE_PRODUCT_CHIP_CSS); }, "dsh-chat-ui: hide-product-chip");
         ctx.effect(function () { return injectStyle(HIDE_CONVERSATION_TOP_CSS); }, "dsh-chat-ui: hide-conversation-top");
         ctx.effect(function () { return injectStyle(HIDE_HISTORY_ERROR_CSS); }, "dsh-chat-ui: hide-history-error");
         ctx.effect(installHistoryErrorGuard, "dsh-chat-ui: history-error-guard");
-        ctx.effect(function () { return injectStyle(CHIP_CSS); }, "dsh-chat-ui: mode-chip");
 
         var search = (typeof window !== "undefined" && window.location && window.location.search) || "";
         var params = new URLSearchParams(search);
 
         window.setTheme = function (id) { var theme = ctx.get("theme"); if (theme !== undefined) theme.setTheme(id); };
         window.setLanguage = function (id) { var locale = ctx.get("locale"); if (locale !== undefined) locale.setLocale(id); };
-        window.setMode = function (mode) { if (ALLOWED_MODES.indexOf(mode) === -1) return; try { window.localStorage.setItem("dsh.chat.mode", mode); } catch (e) {} };
 
         if (params.get("theme")) window.setTheme(params.get("theme"));
         if (params.get("language")) window.setLanguage(params.get("language"));
 
-        var stagedMode = params.get("mode");
-        if (!stagedMode && typeof window !== "undefined") {
-          try { stagedMode = window.localStorage.getItem("dsh.chat.mode"); } catch (e) {}
-        }
-        if (stagedMode && ALLOWED_MODES.indexOf(stagedMode) === -1) stagedMode = null;
-
         var workspaceParam = params.get("workspace");
 
-        ctx.inject(["slots", "sessions", "workspaces"], function (scope) {
+        // ?workspace= already fixed the workspace: the hero row still offers a
+        // workspace picker above the composer input, so hide that trigger —
+        // only the trigger, never the row, which also carries the product's
+        // agent-preset chip (this surface's mode selector).
+        if (workspaceParam) {
+          ctx.effect(function () { return injectStyle(HIDE_WORKSPACE_CHIP_CSS); }, "dsh-chat-ui: hide-workspace-chip");
+        }
+
+        ctx.inject(["sessions", "workspaces"], function (scope) {
           // URL-driven workspace.
           if (workspaceParam && scope.get("workspaces") !== undefined) {
             if (typeof console !== "undefined" && console.log) console.log("dsh-chat-ui: opening workspace from URL: " + workspaceParam);
             openWorkspaceByPath(scope.get("workspaces"), scope.get("sessions"), workspaceParam);
           }
-
-          // ?workspace= already fixed the workspace: the hero/blank state still
-          // offers a workspace picker above the composer input; hide it.
-          if (workspaceParam) {
-            ctx.effect(function () { return injectStyle(HIDE_WORKSPACE_PICKER_CSS); }, "dsh-chat-ui: hide-workspace-picker");
-          }
-
-          var slot = scope.get("slots");
-          if (slot === undefined) return;
-          var controller = makeModeController(scope);
-          if (stagedMode) controller.stageFrom(stagedMode);
-          controller.load();
-
-          // Apply the staged choice when a blank session becomes current.
-          scope.get("sessions").list.subscribe(function () { try { controller.select(controller.read().current); } catch (e) {} });
-
-          // Dedicated two-option mode selector inside the composer tool row.
-          slot.inject("conversation.input.left", function () {
-            return slot.register({ name: "conversation.input.left", id: "dsh-chat-mode", order: -200 }, function () {
-              var state = controller.read();
-              var [tick, setTick] = React.useState(0);
-              React.useEffect(function () {
-                // load() may have resolved before this component mounted; reload
-                // now so the options are populated after we are subscribed.
-                controller.load();
-                return controller.subscribe(function () { setTick(function (t) { return t + 1; }); });
-              }, []);
-              return React.createElement("div", { className: "dsh-chat-mode-chip" },
-                React.createElement("button", {
-                  type: "button", className: "dsh-chat-mode-trigger",
-                  "aria-haspopup": "menu", "aria-expanded": state.open ? "true" : "false",
-                  title: "会话模式",
-                  onClick: function () { state.open = !state.open; setTick(function (t) { return t + 1; }); }
-                },
-                  state.current === "code" ? "PTC 模式" : (state.current === "standard" ? "标准模式" : state.current),
-                  " \u25BE"),
-                state.open ? React.createElement("div", { className: "dsh-chat-mode-menu", role: "menu" },
-                  state.options.map(function (o) {
-                    return React.createElement("button", {
-                      key: o.id, type: "button", className: "dsh-chat-mode-item", role: "menuitem",
-                      onClick: function () { controller.select(o.id); }
-                    },
-                      React.createElement("span", { className: "dsh-chat-mode-name" }, o.name),
-                      React.createElement("span", { className: "dsh-chat-mode-desc" }, o.description));
-                  })) : null);
-            });
-          });
         });
       } catch (error) { var log = typeof console !== "undefined" && console.error ? console.error : function () {}; log("dsh-chat-ui: apply failed", error); }
     }

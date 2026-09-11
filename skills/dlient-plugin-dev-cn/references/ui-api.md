@@ -38,7 +38,7 @@ const port = await api.net.fetch('https://api.example.com/data', { method: 'GET'
 | --- | --- | --- |
 | `app.data.read(file)` | `app.data` | 读 `<userData>/plugin-data/<id>/<file>.json`（per-plugin 隔离） |
 | `app.data.write(file, json)` | `app.data` | 写隔离 JSON（原子） |
-| `app.crypt.encrypt(plain)` / `app.crypt.decrypt(b64)` | `app.crypt` | 插件级 AES-256-GCM 加解密（master key 主进程私有，插件间隔离） |
+| `app.crypt.encrypt(plain)` / `app.crypt.decrypt(b64)` | `app.crypt` | 为本插件加密/解密值（插件间隔离） |
 
 ### 2.3 语言 / 系统 / 网络（`i18n.*` / `system.*` / `net.*`）
 

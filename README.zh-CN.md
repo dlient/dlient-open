@@ -75,7 +75,7 @@ dlient-open/
 ├─ app/                 Electron 宿主（main / preload / renderer）
 │  ├─ packages/         @dlient-open 各 npm 包（源码直连）
 │  │   ├─ core/         池 / controller / 协议
-│  │   ├─ create-plugin/   脚手架包（模板在 templates/plugin-demo）
+│  │   ├─ create-plugin/   脚手架包（4 份模板：default / worker / native-host / native）
 │  │   ├─ plugin-sdk/   createWorkerRpc、host-api 类型、vite 辅助
 │  │   ├─ api-types/    host-api 签名单源（HostApiMap）
 │  │   ├─ api-bridge/   UI ⇄ worker 桥

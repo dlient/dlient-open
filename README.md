@@ -75,7 +75,7 @@ dlient-open/
 ├─ app/                 Electron host (main / preload / renderer)
 │  ├─ packages/         @dlient-open npm packages (source-linked)
 │  │   ├─ core/         pool / controller / protocol
-│  │   ├─ create-plugin/   scaffolding package (template in templates/plugin-demo)
+│  │   ├─ create-plugin/   scaffolding package (4 templates: default / worker / native-host / native)
 │  │   ├─ plugin-sdk/   createWorkerRpc, host-api typing, vite helpers
 │  │   ├─ api-types/    single source of host-api signatures (HostApiMap)
 │  │   ├─ api-bridge/   UI ⇄ worker bridge

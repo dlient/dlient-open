@@ -1,6 +1,7 @@
 {
     "name": "@dlient-open/i18n",
     "version": "0.1.0",
+    "author": "Dlient",
     "private": false,
     "main": "./dist/index.mjs",
     "types": "./dist/index.d.ts",

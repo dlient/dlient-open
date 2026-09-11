@@ -10,9 +10,9 @@
 //   2. Be a loader entry for the client bundle (the `dsh.client` declaration)
 //      so the browser roster composes it into window.__DSH_BOOT__.
 //
-// The browser-side surface (sidebar collapse, mode selector, window.setTheme /
-// setLanguage / setMode, ?workspace= / ?theme= / ?language= / ?mode=) lives in
-// ./client.js.
+// The browser-side surface (sidebar collapse, the product's own hero
+// agent-preset chip as the mode selector, window.setTheme / setLanguage,
+// ?workspace= / ?theme= / ?language=) lives in ./client.js.
 export const name = "dsh-chat-ui";
 export const inject = ["webStartup", "workspaceRegistry"];
 

@@ -150,6 +150,18 @@ function requireDeps(): HostShellDeps {
   return shellDeps
 }
 
+/** target 是否严格位于 root 目录内（含分隔符边界：<root>-evil 不算；目录本身不算）。
+ *  用于卸载时判定「只允许删除安装目录下的插件」，Windows 下大小写不敏感。 */
+function isInsideDir(root: string, target: string): boolean {
+  const norm = (p: string): string => {
+    const s = normalize(p).replace(/[/\\]+$/, '')
+    return process.platform === 'win32' ? s.toLowerCase() : s
+  }
+  const r = norm(root)
+  const t = norm(target)
+  return !!r && !!t && t !== r && t.startsWith(r + sep)
+}
+
 // ---- 窗口控制（无头模式自绘标题栏）----
 
 function windowMethod(method: 'close' | 'minimize' | 'maximize' | 'unmaximize' | 'restore' | 'setFullScreen', flag?: boolean): void {
@@ -238,14 +250,21 @@ export function registerHostShell(deps: HostShellDeps): void {
   })
 
   // 卸载（layout 右侧菜单「卸载」；移除目录 + 注册表 + 缓存 + 广播）
+  // 只允许删除安装目录（<userData>/plugins）下的插件：dev 仓库 / 用户自选目录等外部位置
+  // 只做卸载登记（清注册表 + 广播），**绝不删源文件**（否则会删掉开发者的源码目录）。
   handle('uninstall-plugin', async (pluginId: unknown) => {
     const id = String(pluginId ?? '')
     if (!id || !/^[a-z0-9-]+$/.test(id)) return { ok: false, error: `invalid plugin id: ${id}` }
-    const record = requireDeps().listPlugins().find((p) => p.id === id)
+    const deps = requireDeps()
+    const record = deps.listPlugins().find((p) => p.id === id)
     if (!record) return { ok: false, error: `plugin not installed: ${id}` }
-    await rm(record.path, { recursive: true, force: true }).catch(() => undefined)
+    if (isInsideDir(deps.pluginsRoot(), record.path)) {
+      await rm(record.path, { recursive: true, force: true }).catch(() => undefined)
+    } else {
+      console.warn(`[host-shell] uninstall ${id}: kept files outside installed root (${record.path})`)
+    }
     await removeInstalledEntry(id).catch(() => undefined)
-    requireDeps().broadcastChange(id, 'uninstalled')
+    deps.broadcastChange(id, 'uninstalled')
     return { ok: true }
   })
 

@@ -13,6 +13,7 @@ import type { PluginManifest, PluginRuntime, PluginType } from '@dlient-open/plu
 import { WorkerRpcClient, type MessagePortLike } from './worker-rpc'
 import type { PluginPool } from './pool-manager'
 import { instanceKeyFor, type InstanceKey } from './instance'
+import { DlientError, DlientErrorCode } from './errors'
 import { logger } from './logger'
 
 export interface PluginControllerOptions {
@@ -51,6 +52,8 @@ export class PluginController {
   private stoppedByManager = false
   /** 池内 worker 加载失败 / 池退出标记：rpcClient 可能仍存在但 worker 实际不可用，isRunning 据此返回 false */
   private loadFailed = false
+  /** 无 worker 产物（ui 类型 / 纯 UI 的 app）：无直连端口，但插件本身视为可用 */
+  private workerless = false
   /** 可逆副作用（生命周期 12.3.5-②：宿主侧子进程/订阅等；stop 时逆序执行） */
   private disposables: Array<{ name: string; dispose: () => void | Promise<void> }> = []
   /** worker 设置好 directPort 后回调（instanceKey, port1） */
@@ -108,6 +111,13 @@ export class PluginController {
     return this.loadFailed
   }
 
+  /** 是否无 worker 产物（ui 类型 / 纯 UI 的 app）。
+   *  这类插件不 fork、无直连端口，但 UI 可用 → isRunning/isPortReady 视为就绪，
+   *  ENSURE_WORKER 据此快速失败，避免渲染层白等 15s 端口超时。 */
+  isWorkerless(): boolean {
+    return this.workerless
+  }
+
   /** 直连 port 是否已交付（worker 回 direct-port-ready 后为 true）。
    *  池模式 start() 发完 loadPlugin 立即置 running，但 port-ready 握手是异步的；
    *  调用编排方（dev-runtime ensureRunning/refresh）需同时确认 running 与 port 就绪，避免误报成功。 */
@@ -129,9 +139,13 @@ export class PluginController {
     const distEntry = join(this.pluginPath, `${this.manifest.dist ?? 'dist'}/worker.js`)
     const workerEntry = distEntry
     if (this.pluginType === 'ui' || !existsSync(workerEntry)) {
+      // 无 worker 产物（ui 类型 / 纯 UI 的 app）：不 fork，直接置 running。
+      // workerless 标记供 isRunning/isPortReady/ENSURE_WORKER 判定（渲染层不会等端口）
+      this.workerless = true
       this.emitStatus({ id: this.instanceKey, version: this.version, status: 'running', generation, enabled: true })
       return
     }
+    this.workerless = false
     logger.info('lifecycle', 'plugin worker fork', {
       pluginId: this.instanceKey,
       pluginPath: this.pluginPath,
@@ -327,7 +341,9 @@ export class PluginController {
    * direct-port-ready），新 port1 待 worker 就绪后经 onDirectPortReady 交上层分发渲染层。
    */
   refreshDirectPort(): boolean {
-    if (!this.pool.alive) return false
+    // workerless 无直连端口；未 fork（无 rpcClient）也无端口可重建 → 明确返回 false，
+    // 避免池层对未加载 pluginId 的 reattach 静默 no-op，让渲染层白等 15s
+    if (!this.pool.alive || this.workerless || !this.rpcClient) return false
     this.closeDirectPort()
     const { port1, port2 } = new MessageChannelMain()
     this.directPort1 = port1
@@ -348,7 +364,11 @@ export class PluginController {
   /** 调用目标 worker 的方法（经控制面 rpc-call；fromPluginId 为跨插件调用来源，worker 侧经 ctx 接收） */
   callWorker(method: string, args: unknown[] = [], fromPluginId?: string): Promise<unknown> {
     if (!this.rpcClient) {
-      return Promise.reject(new Error(`plugin worker not running: ${this.instanceKey}`))
+      // 结构化错误（带码，供上层映射 WORKER_NOT_RUNNING）；workerless 与「已退出」区分文案
+      const msg = this.workerless
+        ? `plugin has no worker: ${this.instanceKey}`
+        : `plugin worker not running: ${this.instanceKey}`
+      return Promise.reject(new DlientError(DlientErrorCode.WORKER_NOT_RUNNING, msg))
     }
     return this.rpcClient.call(method, args, fromPluginId)
   }

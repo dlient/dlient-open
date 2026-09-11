@@ -1,6 +1,7 @@
 {
   "name": "@dlient-open/create-plugin",
-  "version": "0.1.9",
+  "version": "0.2.0",
+  "author": "Dlient",
   "description": "dlient-open 开源版插件开发脚手架：一条命令创建适配开源宿主（layout 导入 .dlient）的插件模板",
   "keywords": [
     "dlient",

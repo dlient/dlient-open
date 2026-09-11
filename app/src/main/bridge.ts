@@ -241,8 +241,17 @@ export function registerBridge(runtime: DlientRuntime, opts: BridgeOptions): voi
     if (!runtime.isRunning(pluginId)) {
       const res = await opts.ensurePluginWorker(pluginId)
       if (!res.ok) return res
+      // workerless（ui 类型 / 纯 UI 的 app）：无 worker 产物 → 无直连端口，
+      // 立即返回失败，避免 preload 白等 15s port-ready 超时
+      if (runtime.isWorkerless(pluginId)) {
+        return { ok: false, error: `plugin has no worker: ${pluginId}`, code: DlientErrorCode.WORKER_NOT_RUNNING }
+      }
       // 新启动的 worker 会在就绪后触发 port-ready 回调下发，无需在此重发
       return { ok: true }
+    }
+    // 已 running 的 workerless 实例：同样无端口可下发
+    if (runtime.isWorkerless(pluginId)) {
+      return { ok: false, error: `plugin has no worker: ${pluginId}`, code: DlientErrorCode.WORKER_NOT_RUNNING }
     }
     const cached = readyPorts.get(pluginId)
     if (cached && !cached.sent) {

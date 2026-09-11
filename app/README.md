@@ -18,7 +18,7 @@
 app/
 ├─ packages/                 @dlient-open npm 包（源码直连 / 也可发布 npm）
 │  ├─ core/                  宿主主进程核心库（池 / controller / 协议）
-│  ├─ create-plugin/         插件脚手架（bin + plugin-demo 模板）
+│  ├─ create-plugin/         插件脚手架（bin + default / worker / native-host / native 四份模板）
 │  ├─ plugin-sdk/            createWorkerRpc、host-api 类型、vite 辅助
 │  ├─ api-types/             host-api 签名单源（HostApiMap）
 │  ├─ api-bridge/            UI ⇄ worker 桥（PluginApi）

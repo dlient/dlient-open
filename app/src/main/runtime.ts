@@ -58,6 +58,8 @@ export interface DlientRuntime {
   authorizeLogAccess(fromPluginId: string, filterId: string): Promise<{ ok: boolean; error?: string; code: number }>
   /** 插件 worker 是否已运行（ensure-worker 判断用） */
   isRunning(pluginId: string): boolean
+  /** 是否无 worker 产物（ui 类型 / 纯 UI 的 app）：bridge ENSURE_WORKER 快速失败用 */
+  isWorkerless(pluginId: string): boolean
   /** 直连 port 是否已就绪（running 状态可能早于 port-ready 握手；dev-runtime 确认 worker 真就绪用） */
   isPortReady(pluginId: string): boolean
   /** 所有实例运行时状态（含正式与 dev 双版本；dev runtime 状态同步用） */
@@ -794,6 +796,7 @@ export function createRuntime(options: CreateRuntimeOptions = {}): DlientRuntime
     requestPermissions,
     authorizeLogAccess,
     isRunning: (pluginId) => manager.isRunning(pluginId),
+    isWorkerless: (pluginId) => manager.isWorkerless(pluginId),
     isPortReady: (pluginId) => manager.isPortReady(pluginId),
     listRuntimeStates: () => manager.listRuntimeStates(),
     refreshDirectPort: (pluginId) => manager.refreshDirectPort(pluginId),

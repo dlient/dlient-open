@@ -1,0 +1,25 @@
+{
+  "$schema": "https://modelcontextprotocol.io/schemas/tools.json",
+  "name": "__PLUGIN_ID__",
+  "description": "dlient 模板演示插件：提供示例 greet 方法",
+  "tools": [
+    {
+      "name": "__PLUGIN_ID__.greet",
+      "description": "示例方法：返回一条问候消息",
+      "inputSchema": { "type": "object", "properties": {}, "required": [] },
+      "permissions": []
+    },
+    {
+      "name": "__PLUGIN_ID__.echo",
+      "description": "示例方法：返回业务错误信封（rpc.error + 多语言消息）",
+      "inputSchema": { "type": "object", "properties": {}, "required": [] },
+      "permissions": []
+    },
+    {
+      "name": "__PLUGIN_ID__.guard",
+      "description": "示例方法：抛出 PluginError（SDK 兜底包装为失败信封）",
+      "inputSchema": { "type": "object", "properties": {}, "required": [] },
+      "permissions": []
+    }
+  ]
+}

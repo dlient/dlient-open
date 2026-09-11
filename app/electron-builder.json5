@@ -14,7 +14,9 @@
     "output": "release/${version}"
   },
   "extraResources": [
-    { "from": "build/icon.png", "to": "icon.png" }
+    { "from": "build/icon.png", "to": "icon.png" },
+    // 子进程收割脚本：必须以真实文件落在 asar 之外（reaper 是纯 node，不认 asar）
+    { "from": "resources/reaper.mjs", "to": "reaper.mjs" }
   ],
   "files": [
     "dist/index.html",
@@ -39,7 +41,7 @@
   },
   "win": {
     "icon": "build/icon.png",
-    "executableName": "DlientOpen",
+    "executableName": "Dlient Open",
     "target": [
       {
         "target": "nsis",

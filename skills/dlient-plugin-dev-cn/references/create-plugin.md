@@ -2,70 +2,115 @@
 
 ## 1. 脚手架
 
-用官方开源脚手架（模板单源 `plugin-demo`）：
+使用官方开源脚手架。它在 `app/packages/create-plugin/templates/` 下提供**四个模板**（四种模式）：
+`default`、`worker`、`native-host`、`native`。模式 flag **互斥**——同时传两个不同的会报错。**不带任何
+flag** 时得到 `default`。
 
 ```bash
-npx @dlient-open/create-plugin my-plugin                   # 生成 ./my-plugin
-npx @dlient-open/create-plugin my-plugin --name "我的插件"  # 显示名（缺省 = 插件 id）
-npx @dlient-open/create-plugin my-plugin --dir ~/dev       # 指定创建目录
-npx @dlient-open/create-plugin my-plugin --native-host     # 原生模块：官方 Node 子进程模式（native-host，免 rebuild）
-npx @dlient-open/create-plugin my-plugin --native          # 原生模块：随包 + @electron/rebuild（逐平台构建）
+npx @dlient-open/create-plugin my-plugin                    # default：仅 UI（无 worker、无 skills/）
+npx @dlient-open/create-plugin my-plugin --worker           # worker：UI + worker（RPC / 子进程）
+npx @dlient-open/create-plugin my-plugin --native-host      # native-host：worker + 经官方 Node 子进程的原生模块（免 rebuild）
+npx @dlient-open/create-plugin my-plugin --native           # native：worker + 随包预构建（@electron/rebuild，逐平台）
+npx @dlient-open/create-plugin my-plugin --name "My Plugin" # 显示名（缺省 = id）
+npx @dlient-open/create-plugin my-plugin --dir ~/dev        # 目标目录
 ```
 
-开源脚手架**没有 `--port` / `--devPort`、也没有 `--asar`**：热重载是**产物级 watch**（见 §4），构建产物恒为普通 `dist/` 目录（无 asar / plugin.json 形态）。
+| 模式 | Flag | 模板 | 相对 `default` 新增 |
+| --- | --- | --- | --- |
+| `default` | （无） | `templates/default` | —（仅 UI：无 `src/main/`、无 `dist/worker.js`、无 `build:worker`、无 `skills/`） |
+| `worker` | `--worker` | `templates/worker` | `src/main/index.ts`、`dist/worker.js`、`build:worker` / `dev:watch:worker`、`skills/` |
+| `native-host` | `--native-host` | `templates/native-host` | worker + `src/native-host/index.ts` + `dlient.nativeModules`（官方 Node 子进程，免 `@electron/rebuild`） |
+| `native` | `--native` | `templates/native` | worker + `script/build-native.mjs` + `dlient.native: true`（随包预构建，`@electron/rebuild`） |
 
-脚手架**默认不执行 npm install、不创建 git 仓库**；创建后进入插件目录自行安装/初始化。
+`--native-host` 与 `--native` 是两个**互相独立、互斥的模式**：`--native-host` **不**隐含也**不**要求
+`--native`（它使用官方 Node 子进程，无需 rebuild）。
+
+四个模板**共用一个 `.agent/` 目录**（开发文档 + 可直接复制的 `example/` 源码），由 `dlient-plugin-dev`
+技能生成，并会被复制进每个生成的工程。
+
+开源脚手架没有 `--port` / `--devPort`、也没有 `--asar`：热重载是**产物级 watch**（见 §4），构建产物恒为普通 `dist/` 目录（无 asar / plugin.json）。
+
+脚手架**不执行 `npm install`、不创建 git 仓库**；创建后 `cd` 进入插件目录自行安装依赖。
 
 - 插件 id 仅允许小写字母、数字、连字符（须以小写字母开头）。
 - 开源版**无市场、无 dev-tools 入口**：运行插件要么用仓库 dev 源码布局（见 §4），要么打好 `.dlient` 后在宿主操作台「导入插件」导入。
 
 ## 2. 模板目录结构
 
-模板与开源 `plugin-demo` 模板一致（见 `app/packages/create-plugin/templates/plugin-demo`）：
+每种模式共用同一基底（这里列出的文件在**四种模式中都存在**）：
 
 ```
 my-plugin/
 ├── package.json              # manifest（dlient 子对象）
 ├── vite.config.ts            # createPluginViteConfig 预设（SystemJS 产物）
 ├── tsconfig.json
-├── skills/
-│   └── SKILL.md              # 可选 AI Agent 技能文档（保留在 skills/）
-├── assets/                   # 装配后的公开资源
-│   ├── icon.svg              # 必填图标（manifest dlient.icon；按插件 id 首字母取图）
-│   ├── index.md              # 插件说明（默认 / 英文）
-│   ├── index.zh-CN.md        # 中文说明（可选）
-│   ├── index.en-US.md        # 英文说明变体（可选）
-│   └── mcp.json              # 可选 MCP 工具描述（由根目录移入）
+├── assets/                   # 装配时生成：
+│   ├── icon.svg              #   必填图标（manifest dlient.icon；按插件 id 首字母取图）
+│   ├── index.md              #   插件说明（默认 / 英文）
+│   ├── index.zh-CN.md        #   中文说明
+│   ├── index.en-US.md        #   英文说明变体
+│   └── mcp.json              #   可选 MCP 工具描述（由根目录移入）
 ├── script/
 │   ├── build-clean.mjs       # 清理 dist/
-│   ├── build-worker.mjs      # → dist/worker.js（存在 src/native-host/ 时 + dist/native-host.js）
-│   ├── make-dlient.mjs       # npm run pack → <id>-<version>.dlient（本地、免签名）
-│   └── build-native.mjs      # 仅 --native 生成时存在
-└── src/
-    ├── main/index.ts         # worker 入口
-    ├── native-host/          # 仅 --native-host（index.ts）
-    └── renderer/             # UI：App.tsx / i18n.ts / styles.css / env.d.ts
+│   └── make-dlient.mjs       # npm run pack → <id>-<version>.dlient（本地、免签名）
+├── src/
+│   └── renderer/             # UI：App.tsx / i18n.ts / styles.css / env.d.ts
+└── .agent/                   # 共享开发文档 + 示例源码（四种模式都有）
 ```
+
+模式专属文件（**某模式只存在其列出的文件**）：
+
+```
+# default — 仅 UI
+（无额外文件：无 src/main/、无 build-worker.mjs、无 skills/）
+
+# worker — UI + worker
+├── script/build-worker.mjs
+├── src/main/index.ts
+└── skills/SKILL.md
+
+# native-host — UI + worker + 原生模块（官方 Node 子进程）
+├── script/build-worker.mjs
+├── src/main/index.ts
+├── src/native-host/index.ts
+└── skills/SKILL.md
+
+# native — UI + worker + 随包预构建
+├── script/build-worker.mjs
+├── script/build-native.mjs
+├── src/main/index.ts
+└── skills/SKILL.md
+```
+
+`.agent/` 镜像本技能（`SKILL.md`、`references/`、`example/`）；它不属于插件的构建产物，只是随工程附带的开发文档。
 
 ## 3. 安装与构建
 
 ```bash
 cd my-plugin
 npm install
-npm run build        # UI → dist/remoteEntry.js（+ style.css/assets）；worker → dist/worker.js
+npm run build        # default：UI → dist/remoteEntry.js
+                     # worker / native-host / native：还会构建 worker → dist/worker.js（+ dist/native-host.js）
 ```
 
-模板标准脚本（来自模板 `package.json`）：
+标准脚本（来自各模式模板的 `package.json`）；`✓` = 该模式存在，`—` = 不存在：
 
-| 命令 | 作用 |
-| --- | --- |
-| `npm run build` | `build-clean` → `build:ui` → `build:worker`（`--native` 时 + `build:native`） |
-| `npm run build:ui` | `vite build` → `dist/remoteEntry.js`（System.register）+ CSS |
-| `npm run build:worker` | `node script/build-worker.mjs` → `dist/worker.js`（存在时 + `dist/native-host.js`） |
-| `npm run dev:watch` | UI 变更即重建（`vite build --watch`） |
-| `npm run dev:watch:worker` | worker 变更即重建（`build-worker.mjs --watch`） |
-| `npm run dev` | 同时跑两个 watch 命令（产物级 watch） |
-| `npm run pack` | `npm run build && node script/make-dlient.mjs` → 插件根目录生成 `<id>-<version>.dlient`（另支持 `node script/make-dlient.mjs --version x.y.z` / `--name x.dlient`） |
+| 命令 | 作用 | default | worker | native-host | native |
+| --- | --- | :---: | :---: | :---: | :---: |
+| `npm run build` | `build-clean` → `typecheck` → `build:ui`；worker / native-host / native 再跑 `build:worker`；native 再跑 `build:native` | ✓ | ✓ | ✓ | ✓ |
+| `npm run build:ui` | `vite build` → `dist/remoteEntry.js`（System.register）+ CSS | ✓ | ✓ | ✓ | ✓ |
+| `npm run build:worker` | `node script/build-worker.mjs` → `dist/worker.js`（存在 `src/native-host/` 时 + `dist/native-host.js`） | — | ✓ | ✓ | ✓ |
+| `npm run build:native` | `node script/build-native.mjs` → 对随包预构建执行 `@electron/rebuild` | — | — | — | ✓ |
+| `npm run dev:watch` | UI 变更即重建（`vite build --watch`） | ✓ | ✓ | ✓ | ✓ |
+| `npm run dev:watch:worker` | worker 变更即重建（`build-worker.mjs --watch`） | — | ✓ | ✓ | ✓ |
+| `npm run dev` | 运行上述 watch 命令（产物级 watch） | ✓ | ✓ | ✓ | ✓ |
+| `npm run pack` | `npm run build && node script/make-dlient.mjs` → 插件根目录生成 `<id>-<version>.dlient`（另支持 `--version x.y.z` / `--name x.dlient`） | ✓ | ✓ | ✓ | ✓ |
+
+**升级 `default` 工程（无需重新脚手架）。** 按 `references/mode-switch-worker.md`、
+`references/mode-switch-native-host.md` 或 `references/mode-switch-native.md` 操作，使用
+`example/worker/` / `example/native-host/` 中的可直接复制源码（在生成的工程里为
+`.agent/example/...`）；`native` 模式复用 worker 源码，外加 `templates/native` 脚手架里的
+`script/build-native.mjs`。
 
 构建产物恒为**普通 `dist/` 目录**（`remoteEntry.js` / `worker.js` / …）——**没有 asar 打包、也没有 plugin.json 形态**。`.dlient` 即普通（store 压缩）zip：含 `package.json`（打包时改写 `dlient.source='local'` / `dlient.system=false`）、`assets/`、`skills/` 与 `<dist>/`（不含 `dist/node_modules`）；包本身不带签名——导入后由宿主本地签名（见 §5）。
 
@@ -99,7 +144,7 @@ npm run build        # UI → dist/remoteEntry.js（+ style.css/assets）；work
 1. 选择 `.dlient`；宿主解析 manifest 后弹**确认框**：权限 tab（逐项列出声明的权限并带安装风险色点：`default` 灰 / `warn` 橙 / `dangerous` 红）+ 依赖 tab（`preInstall` 条目）。
 2. **深度安装**：manifest 声明 `preInstall` 时，宿主先递归安装每个依赖——npm（semver → 拉 npm 包，在包根 / `pack/` / `dist/` 找其 `.dlient`）、GitHub（最新 Release 的 `*.dlient` 资产）或 `.dlient` 直链。
 3. 插件解包落到 `USER_DATA/plugins/<id>`（`~/.dlient-open/plugins/…`），manifest 改写为 `source='local'`、`system=false`。
-4. **本地完整性签名**：落盘后宿主用内嵌 Ed25519 密钥写 `signature.json`（format=1；`files` 仅含 `package.json` + `dist/**` 的 `sha256:<hex>`）。启动 / 协议加载时宿主校验；仓库 dev 源码目录（`@dev`）跳过；无 `signature.json`（历史 / 旧导入）放行。
+4. **本地完整性签名**：导入后宿主记录一个本地完整性签名（`signature.json`）。编辑已安装插件的文件会破坏校验。仓库 dev 源码目录（`@dev`）跳过校验；无 `signature.json` 的包放行。
 
 已安装插件落在 `~/.dlient-open/plugins/`；宿主 userData 根为 `~/.dlient-open`。
 
@@ -108,7 +153,7 @@ npm run build        # UI → dist/remoteEntry.js（+ style.css/assets）；work
 | 现象 | 可能原因 / 处理 |
 | --- | --- |
 | `permission denied … -2107` | 缺 `manifest.permissions` 或资源授权。补权限，或在弹框 / 权限页授权。 |
-| worker 起不来 / 一直 `starting` | `dist/worker.js` 未构建，或 worker 阻塞事件循环（心跳超时）。 |
+| worker 起不来 / 一直 `starting` | `dist/worker.js` 未构建，或 worker 阻塞事件循环。 |
 | UI 空白 / 无样式 | `remoteEntry.js` 未构建；检查 `dist/` 与 `dlientOpen://` 资源日志。 |
 | 类型推断与预期不符 | `type` 缺省为 `app`；`full`/`worker`/`ui` 请显式声明。 |
 | 导入因缺依赖失败 | 插件声明了未安装的 `preInstall` / `dependencies` 插件；先导入对应依赖（或导入会深度安装依赖的 `.dlient`）。 |

@@ -1,6 +1,7 @@
 {
     "name": "@dlient-open/plugin-sdk",
     "version": "0.1.4",
+    "author": "Dlient",
     "private": false,
     "type": "module",
     "main": "./dist/index.mjs",

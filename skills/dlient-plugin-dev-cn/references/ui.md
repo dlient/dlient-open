@@ -14,6 +14,8 @@ UI 是宿主渲染层经 SystemJS 加载的 React 包。没有 HTML 流程：宿
 
 从 **`@dlient-open/ui`** 引入组件。它 re-export 一套 **shadcn/ui 风格组件**（radix 原语 + tailwind 变量，前缀 `dui:`），并兼容旧 `theme` 写法（`theme="primary"` 自动映射到 shadcn `variant`）。这些组件随宿主主题与共享样式渲染，**不要重复造轮子、不要自绘 UI**。
 
+> **不要在自己的标记里写 `dui:*` 工具类。** 共享样式表是由本包自身源码预编译的，只有它已经用到的那些工具类存在；其它 `dui:*` 类会静默失效。自己的布局用普通 CSS / `*.module.css`（见 `dev-standards.md` → 样式与主题），视觉风格交给组件。
+
 ```tsx
 import { Button, Input, Card, Dialog, Tabs, Select, Badge, toast } from '@dlient-open/ui'
 ```

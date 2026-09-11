@@ -1,4 +1,6 @@
-# 模板单源：templates/plugin-demo 直接入库（publish.mjs prepare 校验源存在）。
+# 模板：templates/{default,worker,native-host,native} 直接入库（publish.mjs prepare 校验其存在）。
+# 共享文档 templates/_shared/.agent 由 publish.mjs 从 ../../skills/dlient-plugin-dev 生成，
+# 也一并入（生成命令：npm run prepare:templates）。
 # 模板在包内测试构建时的 node_modules/dist/pack/.dlient 由下方通用规则覆盖；
 # 仅保留对模板内 lockfile 的定向忽略。
 templates/**/package-lock.json
@@ -19,7 +21,7 @@ dist
 dist-ssr
 *.local
 
-# dlient plugin local pack（包内测试模板时在 templates/plugin-demo 下生成）
+# dlient plugin local pack（包内测试模板时在 templates/* 下生成）
 pack/
 *.dlient
 plugin.asar

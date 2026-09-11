@@ -1,6 +1,7 @@
 {
     "name": "@dlient-open/core",
     "version": "0.1.1",
+    "author": "Dlient",
     "private": false,
     "type": "module",
     "main": "./src/index.ts",

@@ -30,8 +30,13 @@
     trustedHosts: !!js ctx.webStartup.trustedHosts
 
 # The web bundle already sets the roster default to `standard`; restate it so
-# the chat surface's default access mode is explicit. The built-in `code` (PTC)
-# preset shows up alongside it in the mode picker.
+# the chat surface's default access mode is explicit. This is now the ONLY mode
+# knob this profile sets: the browser half shows the product's own hero
+# agent-preset chip (blank sessions only) over the full roster the roots below
+# supply — `standard`, `code` (PTC), `minimal`, `cordis`, plus anything under
+# `$DSH_HOME/.agent-presets`. Narrowing that list would take a host-side change
+# here (only `roots` + `includeUserRoot` are configurable; there is no per-preset
+# allowlist), not a client-side filter.
 - id: agent-presets
   config:
     default: standard
@@ -53,8 +58,8 @@
 
     # The chat UI row: its host half registers `--workspace` through the host
     # workspaceRegistry (which persists the workspace as a real group); its
-    # `./client` export is the browser bundle (sidebar collapse, dedicated
-    # standard/PTC mode selector, window.setTheme / setLanguage / setMode,
-    # ?workspace= / ?theme= / ?language= / ?mode=).
+    # `./client` export is the browser bundle (sidebar collapse, the product's
+    # own hero agent-preset chip kept as the mode selector, and
+    # window.setTheme / setLanguage, ?workspace= / ?theme= / ?language=).
     - id: chat-ui
       name: '@dlient/dsh-chat-ui'

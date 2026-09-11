@@ -1,6 +1,7 @@
 {
     "name": "@dlient-open/api-types",
     "version": "0.1.0",
+    "author": "Dlient",
     "private": false,
     "type": "module",
     "main": "./src/index.ts",

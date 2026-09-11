@@ -1,6 +1,6 @@
 # Worker 端编写说明
 
-Worker 运行在宿主的 `utilityProcess` 池里，是纯 Node——无 DOM、无渲染层，唯一的出路是 host-api 与跨插件 RPC。
+Worker 是纯 Node 进程（Electron utilityProcess）——无 DOM、无渲染层，唯一的出路是 host-api 与跨插件 RPC。
 
 ## 1. 入口与构建
 
@@ -208,17 +208,66 @@ if (rpc.getPluginId().endsWith('@dev')) void rpc.log.write('warn', 'running as d
 
 ## 4. 向其它插件暴露方法
 
+### 4.1 expose 策略——尽量少暴露
+
+- **除非其它插件确实必须调用本插件，或用户明确要求，否则不要添加 `dlient.expose` 条目。** 每暴露一个方法都会扩大跨插件攻击面。
+- 插件能暴露方法的**唯一条件**是它真的带 worker —— 即构建产物包含 `dist/worker.js`。manifest 的 `type` 与能否暴露无关：带 `dist/worker.js` 的 `app` / `ui` 插件**也能**暴露（注册 handler 的正是 worker）；而没有 `dist/worker.js` 的插件不能暴露 —— 没有任何东西能承载该调用，宿主会以 `WORKER_NOT_RUNNING`（`-2102`）拒绝。
+- 有 worker 的插件（`full` / `worker`，或任何带 `dist/worker.js` 的插件）通常才声明 `expose`。
+- 暴露一个方法需要**两半俱全**：在 worker 中注册 handler（`rpc.registerHandler('<plugin-id>.<method>', handler)`），**并且**在 `dlient.expose` 中声明完整点分 key。
+
+### 4.2 暴露一个方法
+
 ```ts
 rpc.registerHandler('my-plugin.greet', async ([name]) => `hello ${name}`)
 ```
 
-在 manifest 里加守卫：
+在 manifest 中用**完整点分 key**加守卫：
 
 ```jsonc
 "expose": { "my-plugin.greet": { "description": "…", "access": "public" } }
 ```
 
-其它插件在 `dependencies` 声明后调用 `rpc.plugin.invoke('my-plugin', 'my-plugin.greet', ['world'])`（未声明 `dependencies` 时需授权记录或被调用方 `grant`）。access 档位：`private`（仅自己）/ `default`（宿主 + 自己）/ `system`（宿主内部——开源版无 system 插件）/ `public`（任意）/ `install-confirm` / `runtime-confirm`（见 manifest 参考）。
+其它插件在 `dependencies` 声明后调用 `rpc.plugin.invoke('my-plugin', 'my-plugin.greet', ['world'])`（未声明 `dependencies` 时需已有授权记录或被调用方 `grant`）。access 档位：`private`（仅自己）/ `default`（宿主 + 自己）/ `system`（宿主内部——开源版无 system 插件）/ `public`（任意）/ `install-confirm` / `runtime-confirm`（可用 `|` / `&` 组合；见 manifest 参考）。`paramsSchema` **仅用于文档 / 表单生成**——宿主不在运行时据此校验参数。
+
+### 4.3 `grant` handler
+
+当调用方需要授权（或主动调用 `requestGrant`）时，宿主会调用被调用方 worker 的特殊 `grant` handler。用字面量 key `grant` 注册：
+
+```ts
+rpc.registerHandler('grant', async ([req]: [{ method: string; plugin_id: string; version?: string; org?: string; data?: unknown }]) => {
+  return { status: 'ask' }   // 'allow' | 'ask' | 'deny'
+})
+```
+
+它必须与 manifest `expose` 中的对应条目配套：
+
+```jsonc
+"expose": { "grant": { "description": "…", "access": "default" } }
+```
+
+| `status` | 含义                                                                         |
+| -------- | ------------------------------------------------------------------------------- |
+| `allow`  | 对该调用方 + 方法永久授权（不再弹窗）                    |
+| `ask`    | 用户获得三选确认框：拒绝 / 仅本次允许 / 始终允许 |
+| `deny`   | 拒绝                                                                         |
+
+指引：
+
+- **优先 `ask`**——让用户在调用时决定。
+- 只要方法涉及用户隐私、密码、密钥、token 或其它敏感信息，就返回 **`deny`**。
+- 仅对明确无害、不敏感的方法才返回 **`allow`**。
+
+若被调用方**未**暴露 `grant`，未授权的跨插件调用会以 `ACCESS_DENIED` 失败。调用方也可主动询问：
+
+```ts
+const { allowed, scope, reason } = await rpc.plugin.requestGrant('my-plugin', 'my-plugin.greet', { name: 'world' })
+```
+
+### 4.4 密钥
+
+- 密码、密钥与 token 必须**先用 `rpc.app.crypt.encrypt(plain)` 加密再存储**（如存入 `app.data`），读回时用 **`rpc.app.crypt.decrypt(ciphertext)` 解密**。
+- `app.data.read` / `app.data.write` 是明文的隔离存储——**绝不**在其中明文写入密钥。
+- **绝不记录或返回明文密钥**（不要 `rpc.log.write` 密钥，也不要在跨插件响应里放明文密钥）。
 
 ## 5. 日志
 
@@ -232,7 +281,7 @@ void rpc.log.write('error', 'boom', new Error('…'))
 
 ## 6. 宿主代管子进程 — `rpc.child.spawn` / `ChildHandle`
 
-worker **不能自己 spawn**（无 `--allow-child-process`）。由主进程经 `child.spawn` / `child.execFile` 代劳，先过命令白名单（`spawnCmds`）或 `spawn-confirm` 运行时授权。下面的 SDK 封装是插件唯一应使用的 spawn 入口。
+worker **不能自己 spawn**。由主进程经 `child.spawn` / `child.execFile` 代劳，先过命令白名单（`spawnCmds`）或 `spawn-confirm` 运行时授权。下面的 SDK 封装是插件唯一应使用的 spawn 入口。
 
 ### 6.1 `rpc.child.spawn` —— 流式子进程
 
@@ -315,8 +364,8 @@ throw new PluginError(-3010, 'config missing')   // 错误码段 -3001..
 
 返回错误码 / 多语言消息；面向用户的文案留在 UI 侧。
 
-## 9. 生命周期与心跳
+## 9. 生命周期与长时运行
 
-- 保持事件循环活跃。**绝不同步阻塞**（禁用 `spawnSync`、同步文件 I/O）：事件循环冻结会让心跳停摆，触发 watchdog 重启/杀掉插件。
+- 保持事件循环活跃。**绝不同步阻塞**（禁用 `spawnSync`、同步文件 I/O）：事件循环冻结时，宿主会重启你的 worker。
 - 启动时重新注册 handler（热重载重跑 `dist/worker.js`）。
 - worker 退出后，宿主回收其名下全部资源：子进程、托管 spawn 句柄、日志订阅。

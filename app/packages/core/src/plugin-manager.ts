@@ -289,15 +289,24 @@ export class PluginManager {
     return controller.callWorker(method, args, fromPluginId)
   }
 
-  /** 插件 worker 是否已运行（ensure-worker 判断用；池内加载失败/退出后 rpcClient 残留，须排除） */
+  /** 插件是否可用（ensure-worker 判断用；池内加载失败/退出后 rpcClient 残留，须排除）。
+   *  workerless（ui 类型 / 纯 UI 的 app）：无 worker 可跑，但插件本身即视为运行中。 */
   isRunning(pluginId: string): boolean {
     const controller = this.controllers.get(pluginId)
-    return !!controller && !!controller.getRpcClient() && !controller.isLoadFailed()
+    return !!controller && !controller.isLoadFailed() && (controller.isWorkerless() || !!controller.getRpcClient())
   }
 
-  /** 直连 port 是否已就绪（worker 回 direct-port-ready 后为 true；running 状态可能早于 port 就绪） */
+  /** 是否无 worker 产物（ui 类型 / 纯 UI 的 app）：bridge ENSURE_WORKER 快速失败用 */
+  isWorkerless(pluginId: string): boolean {
+    return this.controllers.get(pluginId)?.isWorkerless() ?? false
+  }
+
+  /** 直连 port 是否已就绪（worker 回 direct-port-ready 后为 true；running 状态可能早于 port 就绪）。
+   *  workerless 无直连 port，但已「就绪」——消费方（dev-runtime 等）据此判定插件可用。 */
   isPortReady(pluginId: string): boolean {
-    return this.controllers.get(pluginId)?.isDirectPortReady() ?? false
+    const controller = this.controllers.get(pluginId)
+    if (!controller) return false
+    return controller.isWorkerless() || controller.isDirectPortReady()
   }
 
   /**
@@ -307,6 +316,8 @@ export class PluginManager {
   async ensureWorkerRunning(pluginId: string): Promise<boolean> {
     const controller = this.controllers.get(pluginId)
     if (!controller) return false
+    // workerless：无 worker 可起，视为已就绪（避免每次调用都重装 controller）
+    if (controller.isWorkerless()) return true
     if (controller.getRpcClient()) return true
     const generation = this.registry.incrementGeneration(pluginId)
     await controller.start(generation)

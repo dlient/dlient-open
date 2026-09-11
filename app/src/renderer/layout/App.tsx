@@ -44,8 +44,10 @@ const NS = 'plugin-layout'
 const RAIL_BTN_H = 32
 const RAIL_BTN_GAP = 6
 
-/** NPM 市场分类标签：key 即 npm 检索关键词（插件包 keywords 中需含对应 key 才能被分类筛到） */
+/** NPM 市场分类标签：key 即 npm 检索关键词（插件包 keywords 中需含对应 key 才能被分类筛到）。
+ *  首项「全部」key 为空串 = 不附加标签关键词（也是默认态）。 */
 const MARKET_CATEGORIES: Array<{ key: string; zh: string; en: string }> = [
+  { key: '', zh: '全部', en: 'All' },
   { key: 'ai', zh: 'AI 智能', en: 'AI & Intelligence' },
   { key: 'productivity', zh: '办公效率', en: 'Productivity & Office' },
   { key: 'content-creation', zh: '内容创作', en: 'Content Creation' },

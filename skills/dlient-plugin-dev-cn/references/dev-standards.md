@@ -12,7 +12,7 @@ dlient 插件开发的编码规范。请与各参考指南一并遵守。
 
 ### 1.2 绝不同步阻塞
 
-- **禁用同步阻塞**：`spawnSync`/`execFileSync`/同步文件 I/O 一律禁止——事件循环冻结会让心跳停摆，触发 watchdog 重启/杀掉插件。
+- **禁用同步阻塞**：`spawnSync`/`execFileSync`/同步文件 I/O 一律禁止——事件循环冻结时，宿主会重启你的 worker。
 - 重活必须异步（`spawn`/`execFile`/`fs/promises`）；大文件解压等要异步化。
 - CPU 密集插件建议 `workerMode: 'solo'`，避免卡顿同池邻居。
 
@@ -38,6 +38,12 @@ dlient 插件开发的编码规范。请与各参考指南一并遵守。
 - 命令须在 `manifest.dlient.spawnCmds` 或运行时 `spawn-confirm` 覆盖内；解释器要用带 `argsPattern` 的对象规则，不要裸 string。
 - 原生模块绝不进 worker——用 `native`/`nativeModules`（native-host）。
 
+### 1.7 跨插件暴露与密钥
+
+- **expose 策略**：非必要不添加 `dlient.expose` 条目（其它插件确实必须调用本插件，或用户要求时才加）。插件能暴露方法的**唯一条件**是它真的带 worker —— 即构建产物包含 `dist/worker.js`；manifest 的 `type` 与能否暴露无关（带 `dist/worker.js` 的 `app` / `ui` 插件**也能**暴露，注册 handler 的正是 worker；而没有 `dist/worker.js` 的插件不能暴露 —— 没有任何东西能承载该调用 → `WORKER_NOT_RUNNING`、`-2102`）。
+- 每个暴露的方法都需要对应的 `rpc.registerHandler('<pluginId>.<method>', …)`。**尽量**同时暴露 `grant` handler（推荐而非强制）：`rpc.registerHandler('grant', …)` + 配套的 `expose.grant` 条目；优先 `ask`，对涉及隐私、密码、密钥或其它敏感信息的一律返回 `deny`，仅对明确无害的方法用 `allow`。
+- **密钥**：密码 / 密钥 / token 用 `app.crypt` 加密（`rpc.app.crypt.encrypt` / `decrypt`，权限 `app.crypt`）**后再**存储（如存入 `app.data`，它是磁盘明文）；绝不在源码里硬编码，也绝不记录或返回明文。
+
 ## 2. UI 规范
 
 ### 2.1 使用共享组件——不重复造轮子
@@ -61,6 +67,7 @@ dlient 插件开发的编码规范。请与各参考指南一并遵守。
 ### 2.4 样式与主题
 
 - **CSS 已自动作用域化**（plugin-sdk 构建预设 PostCSS 前缀 `[data-plugin="<插件id>"] :where(...)`）：插件自身 `.css` 只作用于本插件视图子树与其弹层（Portal 落 body 级同属性容器），无需手写 `<插件id>-` 前缀类名；`:global(...)` 可显式逃逸，`html/body/:root/*` 指向插件根容器。详见 `docs/specs/plugin-css-scope.md`。
+- **不要在自己的标记里写 `dui:*` 工具类**：共享的 `@dlient-open/ui` 样式表由该包自身源码预编译，只有它已经用到的工具类存在——其它 `dui:*` 类会静默失效。自己的布局用普通 CSS / `*.module.css`，视觉风格交给共享组件。
 - 推荐局部样式用 `*.module.css`（vite CSS Modules，hash 类名）；普通 `.css` 由前缀作用域兜底。
 - 用 `:root` / `.dark` CSS 变量跟随宿主主题；不要在暗色里用硬编码浅色。
 - **暗色滚动条保持暗色**——不要用浅色覆盖宿主暗色 `::-webkit-scrollbar`。

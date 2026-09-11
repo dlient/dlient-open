@@ -4,18 +4,11 @@
 
 ## 1. 进程级沙箱
 
-Worker 经 `utilityProcess.fork` 启动，注入 **Node Permission Model**：
+在 worker 内不能用 `node:fs` / `node:child_process` / `worker_threads`，不能加载 `.node` addon，也不能同步阻塞——一切走 host-api。
 
-```
---permission
---allow-fs-read=<插件目录>,<共享运行时目录>   # 仅最小读集
---allow-net                                    # 临时策略（2026-09-02）
-```
-
-- **进程级封禁**：spawn 子进程、加载 `.node`、写文件、`worker_threads`。
-- `--allow-net` 是**临时**的 net 全放行（大量 npm 包直连）。恢复严格模式后移除；宿主 `net.*` 授权是之后的主路径。
-- 文件写、子进程、原生模块必须经宿主（`fs.*`、`child.*`）或 **native-host** 子进程（全权限官方 Node，跑 `.node`）。
-- 开发逃生开关：`DLIENT_DISABLE_PERMISSION=1`（跳过 `--permission`）、`DLIENT_DISABLE_FS_ENFORCE=1`（跳过 fs 路径校验）。
+- 文件写入、子进程与原生模块必须经宿主（`fs.*`、`child.*`）或 **native-host** 子进程（全权限官方 Node 进程，跑 `.node`）。
+- 目前允许直接 `node:net` / `fetch`（临时策略；大量 npm 包直连）。宿主 `net.*` 授权仍是主路径，严格模式下会取代它。
+- 仅开发期的逃生开关：`DLIENT_DISABLE_PERMISSION=1`（跳过进程级封禁）、`DLIENT_DISABLE_FS_ENFORCE=1`（跳过 fs 路径校验）。
 
 ### 进程池
 
@@ -28,11 +21,11 @@ Worker 经 `utilityProcess.fork` 启动，注入 **Node Permission Model**：
 - `native` → `.node` 随 dist 内置，按 Electron ABI rebuild，逐平台；
 - `nativeModules` → 用户侧经 npm 安装（`dependencies`），由 native-host 解析加载。
 
-宿主以 `child_process.spawn` 拉起、按 owner 跟踪、**崩溃自动重启**；重启时在途 RPC 请求被 reject。
+宿主负责拉起并按 owner 跟踪、**崩溃后自动重启**；重启时在途 RPC 请求被 reject。
 
 ## 2. 两层授权
 
-1. **方法权限** —— `manifest.permissions` 条目，每次 host-api 调用过 `HostCapabilities.canAccess`。
+1. **方法权限** —— `manifest.permissions` 条目，每次 host-api 调用都会校验。
 2. **资源白名单** —— 文件 / URL / 命令：
 
 | 授权种类 | 含义 | 生命周期 |
@@ -108,3 +101,12 @@ manifest `spawnCmds` 两种写法：
 ## 7. 宿主事件推送
 
 子进程的流与生命周期经控制面 child-event 推送，SDK 分发到 `ChildHandle` 回调（`onStdout/onStderr/onExit/onError`）。宿主 → 渲染层事件走 NOTIFY 总线（`app.notify`，receiver 定向）。
+
+## 8. 密钥存储 — `app.crypt`
+
+密码、密钥与 token 绝不能明文存储或处理：
+
+- `app.crypt.encrypt(plain)` / `app.crypt.decrypt(ciphertext)` —— 为本插件加密/解密值；权限 `app.crypt`。worker 侧可达（`rpc.app.crypt.encrypt(...)`），UI 侧也可达（`api.crypt.encrypt(...)`，它在 UI host-api 白名单内）。
+- `app.data.read` / `app.data.write` 是**磁盘上的明文隔离存储**，因此单靠它不够——写密钥前先加密，读回后再解密。
+- **没有免权限的替代方案**：绝不在源码里硬编码密钥、密码或 token。
+- 密钥**绝不**出现在日志或跨插件响应里。

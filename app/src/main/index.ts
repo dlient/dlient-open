@@ -3,7 +3,7 @@
  * 基座主进程职责仅两项：host-api（runtime/export.ts）+ 渲染层桥（bridge.ts）。
  */
 
-import { app, BrowserWindow, protocol, session, shell, nativeImage } from 'electron'
+import { app, BrowserWindow, protocol, screen, session, shell, nativeImage } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
@@ -88,9 +88,13 @@ function windowIcon(): Electron.NativeImage | undefined {
 }
 
 function createWindow() {
+  // 默认窗口尺寸：宽度不低于 900（沿用 1200 基准，且不超出工作区）；高度不低于屏幕工作区高度的 70%
+  const { width: workAreaWidth, height: workAreaHeight } = screen.getPrimaryDisplay().workAreaSize
+  const defaultWidth = Math.max(900, Math.min(1200, workAreaWidth))
+  const defaultHeight = Math.min(workAreaHeight, Math.max(800, Math.round(workAreaHeight * 0.7)))
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: defaultWidth,
+    height: defaultHeight,
     title: 'dlient',
     // 无头模式：无系统标题栏，窗口控制（关闭等）由渲染层自绘按钮经 host-api 触发
     frame: false,
@@ -105,6 +109,8 @@ function createWindow() {
       preload: path.join(__dirname, 'index.mjs'),
       contextIsolation: true,
       nodeIntegration: false,
+      // 打包态禁用 DevTools：正式包不允许打开浏览器调试工具（dev 下保持可用便于排障）
+      devTools: !app.isPackaged,
     },
   })
   // 锁定页面缩放 100%：防止 Ctrl+滚轮等缩放导致渲染层 CSS 坐标与主进程 DIP 不一致
@@ -259,10 +265,9 @@ function loadInstalledRecords(): PluginRecord[] {
     seen.add(r.id)
   }
 
-  // 4) dev 仓库兜底扫描（market 未上报前的 system 插件 / dev 模式仓库内置；同 id 已被上面占位则跳过）
-  //    源码树运行（dev server 或 dist-electron 直跑）时 <appRoot>/../plugins 必存在 → 兜底扫描本地仓库；
-  //    打包版（app.asar）的 '..' 无 plugins 目录 → existsSync 为假，天然不扫描，保持发布语义。
-  if (existsSync(repoPluginsRoot())) scanPluginDirInto(records, seen, repoPluginsRoot())
+  // 注意：**不再**扫描 dev 仓库（<appRoot>/../plugins）。该目录只是源码，插件一律从
+  // <userData>/plugins（安装/导入产物）加载；仓库里的插件不会再自动出现在清单里。
+  // 显式走 dev 流程（dev runtime 上报 / dev-tools 预览）的实例由上面的 dev 缓存提供。
   return records
 }
 
@@ -491,29 +496,9 @@ async function ensurePluginWorker(pluginId: string): Promise<{ ok: boolean; erro
       return { ok: false, error: err instanceof Error ? err.message : String(err), code: DlientErrorCode.INSTALL_FAILED }
     }
   }
-  // dev 模式兜底：清单因缓存/去重原因漏掉仓库插件（如 core 的 nodejs）时，
-  // 直接按 id 读本地仓库 <appRoot>/../plugins/<id> 启动（与 repoPluginsRoot 扫描同一数据源）。
-  if (existsSync(repoPluginsRoot())) {
-    const repoRecord = devRepoRecordById(pluginId)
-    logger.info('lifecycle', 'ensure worker: records missed, repo fallback', {
-      pluginId,
-      devHost: true,
-      repoRecordFound: !!repoRecord,
-      repoRecord: repoRecord
-        ? { id: repoRecord.id, source: repoRecord.source, path: repoRecord.path, version: repoRecord.version }
-        : null,
-    })
-    if (repoRecord) {
-      try {
-        await runtime.startPlugin(repoRecord)
-        return { ok: true }
-      } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : String(err), code: DlientErrorCode.INSTALL_FAILED }
-      }
-    }
-  } else {
-    logger.info('lifecycle', 'ensure worker: records missed', { pluginId, devHost: false })
-  }
+  // 不再回落到 dev 仓库目录（<appRoot>/../plugins）启动：该目录只是源码，宿主不自动加载。
+  // 需要跑仓库里的插件时，显式安装 / 导入到 <userData>/plugins，或经 dev runtime 注册为 dev 实例。
+  logger.info('lifecycle', 'ensure worker: records missed', { pluginId })
   return { ok: false, error: `plugin not found: ${pluginId}`, code: DlientErrorCode.TARGET_NOT_FOUND }
 }
 

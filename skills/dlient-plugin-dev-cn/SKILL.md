@@ -1,7 +1,7 @@
 ***
 
 name: dlient-plugin-dev-cn
-description: 为 dlient 桌面宿主开发插件。覆盖 @dlient-open/create-plugin 脚手架、插件 manifest 结构、Worker（utilityProcess）与 UI（SystemJS remoteEntry）编写、宿主 API 调用、沙箱与权限模型。创建、构建、调试或分发 dlient 插件时使用。
+description: 为 dlient 桌面宿主开发插件。覆盖 @dlient-open/create-plugin 脚手架、插件 manifest 结构、Worker（Node）与 UI（SystemJS remoteEntry）编写、宿主 API 调用、沙箱与权限模型。创建、构建、调试或分发 dlient 插件时使用。
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 # dlient 插件开发
@@ -10,13 +10,13 @@ description: 为 dlient 桌面宿主开发插件。覆盖 @dlient-open/create-pl
 
 dlient 是基于 Electron 的桌面宿主，可加载第三方插件。插件由两半组成（均可选）：
 
-- **Worker**：运行在宿主托管的 Electron `utilityProcess`（Node 运行时，无 DOM、无渲染层）中，由宿主 **worker 池** 管理；
+- **Worker**：运行在沙箱化的 Node 进程中（无 DOM、无渲染层）；
 
 - **UI**：以 `System.register` 编译的 React 产物（`remoteEntry.js`），由宿主渲染层经 SystemJS 加载。
 
 三条核心设计原则：
 
-1. **沙箱优先**：每个 worker 都以 Node Permission Model 启动（`--permission` + 最小 `--allow-fs-read`），不能 fork 子进程、不能加载 `.node`、不能直接读写文件系统。
+1. **沙箱优先**：worker 内不能用 `node:fs` / `node:child_process`，不能加载 `.node` addon，也不能同步阻塞——一切走 host-api。
 2. **宿主代理**：worker 需要的一切（文件、网络、对话框、子进程、系统 API）都经 **host-api** 调用，主进程对每次调用做校验。
 3. **权限模型**：方法级权限（`manifest.permissions` 声明）+ 资源级授权（路径 / URL / 命令，用户运行时确认）。
 
@@ -35,9 +35,9 @@ dlient 是基于 Electron 的桌面宿主，可加载第三方插件。插件由
 | 概念       | 含义                                                                                                                                                      |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Manifest | `package.json` 的 `dlient` 子对象：声明身份、类型、UI/worker 形态、权限、目录、命令、暴露方法。                                                                                       |
-| Worker 池 | 宿主以池方式拉起 worker。`workerMode: 'solo'`（或 `source: 'dev'`）→ 独占池（一插件一进程）；默认 `shared` 归组低敏感插件。                                                               |
+| Worker 池 | `workerMode: 'solo'` 让插件独占进程（一插件一进程）；默认 `shared` 把低敏感插件归组。`source: 'dev'` 插件强制 solo。 |
 | Host-api | 主进程暴露的 RPC 面：`rpc.fs.read(path)`。每次调用都过「方法权限 + 资源白名单」。                                                                                                  |
-| 权限模型     | 进程级封禁（`--permission`，禁 child-process/addon/fs-write）+ 资源级授权（`fs-grants` / `net-grants` / `spawn-grants` / 会话 / 临时）。详见 `references/permission-model.md`。 |
+| 权限模型     | 进程级封禁（禁 `node:fs` / `node:child_process`、禁 `.node` addon、禁同步阻塞）+ 资源级授权（`fs-grants` / `net-grants` / `spawn-grants` / 会话 / 临时）。详见 `references/permission-model.md`。 |
 | 原生模块     | `.node` 不能进 worker。用 `native`（随包内置，逐平台）或 `nativeModules`（用户侧安装）——都跑在专用全权限 Node 子进程（native-host）中。详见 `references/native-host.md`。                        |
 
 ## 4. 插件开发流程
@@ -79,9 +79,24 @@ Manifest 即 `package.json` 的 `dlient` 对象。必填字段：
 | `preInstall`     | 安装期依赖映射 `{ 插件id: "0.5.1" \| github 仓库 URL \| .dlient URL }`——导入/安装时深度安装 | —              |
 | `expose`         | 其它插件可调用的方法（每项可带 `access` + `paramsSchema`）    | —                                           |
 
+**expose 策略** —— 仅当其它插件确实必须调用本插件，或用户明确要求时才添加 `dlient.expose` 条目。插件能暴露方法的**唯一条件**是它真的带 worker —— 即构建产物包含 `dist/worker.js`。manifest 的 `type` 与能否暴露无关：带 `dist/worker.js` 的 `app` / `ui` 插件**也能**暴露（handler 由 worker 注册）；而没有 `dist/worker.js` 的插件不能暴露 —— 没有任何东西能承载该调用，宿主会以 `WORKER_NOT_RUNNING`（`-2102`）拒绝。**尽量**同时暴露 `grant` handler（推荐而非强制），并优先 `ask`；对涉及密钥的一律返回 `deny`。密钥本身必须经 `app.crypt` 加密存储，绝不能明文放入 `app.data` 或日志。
+
 完整字段速查表与带注释示例见 `references/manifest-schema.md`。
 
 ## 6. 调用宿主（host-api）
+
+渲染层（UI）侧 —— 只有 UI 开放列表里的低风险子集可直接调用（见 `references/ui-api.md`），列表之外一律要经 worker：
+
+```tsx
+import { useDlientApi } from '@dlient-open/api-bridge' // '@dlient-open/ui' 亦重新导出
+
+// 在 React 组件内
+const api = useDlientApi()
+
+const text = await api.fs.read('C:/tmp/a.txt')        // 需要 fs.read
+await api.fs.write('C:/tmp/out.bin', { base64: '…' }) // 需要 fs.write
+const p = await api.app.getPath('userData')           // 需要声明 app.getPath
+```
 
 Worker 侧：
 
@@ -92,7 +107,7 @@ const rpc = createWorkerRpc('my-plugin')
 
 const text = await rpc.fs.read('C:/tmp/a.txt')        // 需要 fs.read
 await rpc.fs.write('C:/tmp/out.bin', { base64: '…' }) // 需要 fs.write
-const p = await rpc.app.getPath('userData')           // 无需权限
+const p = await rpc.app.getPath('userData')           // 需要声明 app.getPath
 ```
 
 分组速览：
@@ -153,9 +168,13 @@ const p = await rpc.app.getPath('userData')           // 无需权限
 | `references/manifest-schema.md`    | manifest 完整字段参考与带注释示例                              |
 | `references/host-api-reference.md` | 逐方法的宿主 API 文档：参数、类型、示例                             |
 | `references/permission-model.md`   | 进程沙箱 + 资源授权 + 统一确认弹框                               |
-| `references/native-host.md`        | 原生模块 native-host 模式：架构、server 与 client、可重启 host、安全 |
-| `references/worker.md`             | Worker 编写：SDK API、RPC、日志、子进程句柄、跨插件调用               |
+| `references/native-host.md`        | 原生模块 native-host 模式：架构、server 与 client、可重启 host、安全（expose 策略与 `grant`、加密密钥） |
+| `references/worker.md`             | Worker 编写：SDK API、RPC、日志、子进程句柄、跨插件调用、expose 策略与 `grant`、密钥存储 |
+| `references/mode-switch-worker.md` | 把仅 UI 工程切换为 worker 模式                              |
+| `references/mode-switch-native-host.md` | 把仅 UI 工程切换为 native-host 模式                    |
+| `references/mode-switch-native.md` | 转换到 vendor 原生模式                                  |
 | `references/ui.md`                 | UI 编写：`@dlient-open/ui` 共享组件、hooks、i18n、主题          |
 | `references/dev-standards.md`      | Worker + UI 开发规范                                   |
 | `references/npm-market.md`         | NPM 市场：检索规则、分类标签关键词、发布插件包的 keywords 要求 |
+| `example/`                         | 可直接复制的 worker 与 native-host 示例源码                 |
 

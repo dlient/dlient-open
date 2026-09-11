@@ -9,10 +9,9 @@
 @import "tailwindcss" prefix(dui);
 @import "tw-animate-css";
 
-/* 组件源码（src 内）扫描 */
+/* 组件源码（src 内）扫描：ui.css 只由本包源码决定（产物可复现、与插件仓解耦）。
+ * 插件侧请使用本包组件 + 自己的 CSS，不要依赖 dui:* 工具类（宿主不会为插件源码生成工具类）。 */
 @source "../**/*.{ts,tsx}";
-/* 外部消费方（host/插件）工具类：直接扫源码，避免维护手工 safelist */
-@source "../../../../../plugins/**/*.{ts,tsx}";
 
 /* 宿主把 .dark 挂到 <html>，组件用 dark: 变体 */
 @custom-variant dark (&:is(.dark *));

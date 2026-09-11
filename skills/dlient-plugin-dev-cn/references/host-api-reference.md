@@ -5,6 +5,8 @@
 1. **方法权限** —— 插件必须在 `manifest.permissions` 声明对应能力，否则宿主抛 `PERMISSION_DENIED`（`-2107`）；
 2. **资源白名单** —— `fs.*`、`net.*`、`child.*`、`dialog.*` 按资源授权表校验路径 / URL / 命令（DATA、fsDirs、grants、确认弹框）。
 
+下表的 **Permission** 列表示覆盖该方法的**声明**（组前缀如 `app.data` 同时覆盖 `app.data.*`）。**`—` 并不表示「免权限」**——它的含义是没有更宽的组前缀覆盖该方法，因此必须以精确 key 声明（如 `app.getPath`、`app.notify`、`app.getVersion`）。没有任何方法能绕过第 1 道校验；仅有基础能力 `plugin.invoke` / `plugin.requestGrant` 与 `notification.subscribe` / `notification.unsubscribe`（句柄归属校验）例外。
+
 所有方法均异步、返回可序列化值。错误携带 `DlientErrorCode`（`-2107` 拒绝、`-1005` 非法、`-1003` 用户拒绝、`-1006` 对话框取消等）。
 
 ## 0. 调用方式
@@ -15,7 +17,7 @@ const rpc = createWorkerRpc('my-plugin')
 
 const content = await rpc.fs.read('C:/tmp/a.txt')          // string
 await rpc.fs.write('C:/tmp/out.bin', { base64: 'aGVsbG8=' }) // 二进制
-const userData = await rpc.app.getPath('userData')          // 无需权限
+const userData = await rpc.app.getPath('userData')          // 需要声明 app.getPath
 ```
 
 - `fs.read`/`fs.write`/`app.data.*` 返回/接收 JSON 安全值；二进制以 `{ base64: string }` 传输。
@@ -57,7 +59,7 @@ const watchId = await rpc.fs.watch('C:/src')   // 事件 → registerHandler('<i
 
 ## 2. 网络 — `net.*`
 
-当前 worker 注入 `--allow-net`（临时策略，允许直接 `node:net`/`fetch`）。宿主 `net.*` 仍提供受控访问。
+当前 worker 允许直接 `node:net` / `fetch`（临时策略；大量 npm 包直连）。宿主 `net.*` 仍提供受控访问。
 
 | 方法                | 参数（类型）                                                                     | 权限            | 用途                      |
 | ----------------- | -------------------------------------------------------------------------- | ------------- | ----------------------- |
@@ -129,7 +131,7 @@ const { stdout } = await rpc.child.execFile({ cmd: 'node', args: ['--version'] }
 | `app.getPath`                                                                | `(key: string)`                                                               | —                       | 路径：`userData`（隔离）、`home`、`documents`、`downloads`、`temp` 等 |
 | `app.data.read`                                                              | `(file: string)`                                                              | `app.data`              | 读 `<userData>/plugin-data/<插件id>/<file>.json` → 解析 JSON   |
 | `app.data.write`                                                             | `(file: string, data: unknown)`                                               | `app.data`              | 写隔离 JSON（原子）                                              |
-| `app.crypt.encrypt` / `app.crypt.decrypt`                                    | `(payload)`                                                                   | `app.crypt`             | 每插件密钥加解密                                                  |
+| `app.crypt.encrypt` / `app.crypt.decrypt`                                    | `(payload)`                                                                   | `app.crypt`             | 为本插件加密/解密值                                              |
 | `app.shortcut.register`                                                      | `(accelerator: string, cb: () => void)`                                       | `app.shortcut.register` | 注册全局快捷键                                                   |
 | `app.shortcut.unregister`                                                    | `(accelerator: string)`                                                       | `app.shortcut.register` | 注销快捷键                                                     |
 | `app.menu.popup`                                                             | `(items: MenuItemTemplate[])`                                                 | `app.menu`              | 原生右键菜单 → 被点击项 id                                          |
@@ -149,7 +151,7 @@ await rpc.app.notify({ event: 'my-plugin.data-changed', data: { file: 'settings.
 
 ### 5.1 凭证与子进程（`app.crypt`）
 
-`app.crypt.encrypt/decrypt` 是**每插件隔离**的 AES-256-GCM：插件密钥由宿主 master key 经 HKDF 派生（`info = pluginId`），master key 绝不离主进程，密文格式 `base64(version ‖ iv ‖ tag ‖ ct)`。同一插件跨会话/重启可解自己的密文；其它插件解不开（隔离）。
+`app.crypt.encrypt(plain)` / `app.crypt.decrypt(ciphertext)` —— 为本插件加密/解密值（权限 `app.crypt`；UI 侧也可经 `api.crypt.*` 调用）。用于密码 / 密钥 / token。同一插件跨会话/重启可解自己的密文；密文是**每插件隔离**的，因此其它插件解不开。
 
 典型范式——明文凭证不落盘，再安全交给托管子进程：
 
@@ -179,9 +181,9 @@ await handle.kill()
 
 - 经 `env`（只保留你显式传的项，宿主剥离其余）或 `stdin`（`handle.write`）传递；绝不写日志 / `console`。
 
-- native-host 子进程同样是托管 spawn：在 worker 解密后经 `rpc.child.spawn` env 注入。子进程本身无法调用 `app.crypt`（密钥在主进程）——它只在进程存活期收到解密后的明文。
+- native-host 子进程同样是托管 spawn：在 worker 解密后经 `rpc.child.spawn` env 注入。子进程本身无法调用 `app.crypt`——它只在进程存活期收到解密后的明文。
 
-- 插件隔离：插件 A 加密的密文插件 B 解不开（HKDF info 不同）。不要把密文交给其它插件期待它解密。
+- 插件隔离：插件 A 加密的密文插件 B 解不开。不要把密文交给其它插件期待它解密。
 
 ### 5.2 内置 Node.js 运行时 — `nodejs.*`
 
