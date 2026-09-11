@@ -75,8 +75,55 @@ interface DlientListenController {
   }
 }
 
+/** webview 直连调用载荷：viewId = 调用者视图身份（preload 按 viewId + HMAC 验签；subject = 'webview:create' 等） */
+interface DlientWebviewPayload {
+  viewId: string
+  pluginId: string
+  timestamp: number
+  signature: string
+}
+
+/** webview 直连统一返回信封（data 为各方法结果） */
+interface DlientWebviewResult<T = unknown> {
+  code: number
+  msg?: unknown
+  data: T | null
+}
+
+/** 元素边界（webview 位置/尺寸，CSS 像素） */
+interface DlientWebviewBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 /** preload 暴露的渲染层桥：setView / request / listen / onEvent（签名机制）+ on（广播订阅） */
 interface DlientBridge {
+  /**
+   * 渲染层直连 WebContentsView（替代原 host-api 的 webview.*；插件无需在 manifest 声明 webview 权限）。
+   * 约束：只有「创建该 webview 的视图」能操作它；沙箱与 webPreferences/webContents 方法/事件三类白名单仍在主进程。
+   */
+  webview: {
+    create(
+      payload: DlientWebviewPayload & {
+        src: string
+        bounds: DlientWebviewBounds
+        webPreferences?: Record<string, unknown>
+        events?: string[]
+      },
+    ): Promise<DlientWebviewResult<{ viewId: string }>>
+    update(payload: DlientWebviewPayload & { webviewId: string; bounds: DlientWebviewBounds }): Promise<DlientWebviewResult<null>>
+    destroy(payload: DlientWebviewPayload & { webviewId: string }): Promise<DlientWebviewResult<null>>
+    setVisible(payload: DlientWebviewPayload & { webviewId: string; visible: boolean }): Promise<DlientWebviewResult<null>>
+    call<T = unknown>(
+      payload: DlientWebviewPayload & { webviewId: string; method: string; args?: unknown[] },
+    ): Promise<DlientWebviewResult<T>>
+    /** 隐藏本插件归属的全部 webview，返回本次隐藏的 webview id 列表 */
+    hideMine(payload: DlientWebviewPayload): Promise<DlientWebviewResult<string[]>>
+    /** 显示本插件归属的 webview；views 传入时只恢复列表内的那些 */
+    showMine(payload: DlientWebviewPayload & { views?: string[] }): Promise<DlientWebviewResult<null>>
+  }
   /** PluginView 挂载时登记视图身份（view_id / plugin_id / sign_key） */
   setView(view: { viewId: string; pluginId: string; signKey: string }): void
   /** PluginView 卸载时注销视图身份（view_id） */
@@ -190,9 +237,10 @@ interface DlientBridge {
     nodejsProgress(): Promise<unknown>
     /**
      * 选择并解析 .dlient（不落盘）：返回插件信息与权限清单供用户确认；文件选择取消返回 null。
+     * filePath 为空则弹系统文件选择框；传入路径（如拖入的文件）则直接解析该文件。
      * 返回 { ok: true, preview } | { ok: false, error } | null
      */
-    previewImportPlugin(): Promise<{
+    previewImportPlugin(filePath?: string): Promise<{
       ok: boolean
       error?: string
       preview?: {
@@ -208,6 +256,63 @@ interface DlientBridge {
     } | null>
     /** 确认导入（解包落盘 → 注册表 → 广播）；filePath 来自 previewImportPlugin 返回的 preview.filePath */
     confirmImportPlugin(filePath: string): Promise<{ ok: boolean; id?: string; name?: string; version?: string; error?: string }>
+    /** 拖入文件取真实路径（Electron 32+ 已移除 File.path，须在 preload 用 webUtils 解析） */
+    getPathForFile(file: File): string
+    /**
+     * npm / github / 网址 导入：解析源 → 拉取 .dlient 临时文件并解析 manifest（不落盘）。
+     * 返回 { ok: true, token, kind, source, preview } | { ok: false, error }；token 供确认安装 / 取消清理。
+     */
+    previewImportSource(source: string): Promise<
+      | {
+          ok: true
+          token: string
+          kind: 'npm' | 'github' | 'url'
+          source: string
+          preview: {
+            id: string
+            name: string
+            version: string
+            type?: string
+            description?: string
+            permissions: Array<{ key: string; level: string; description?: { 'zh-CN': string; 'en-US': string } | null }>
+            preInstall: Array<{ id: string; source: string; kind: 'npm' | 'github' | 'url' }>
+          }
+        }
+      | { ok: false; error: string }
+    >
+    /** 按预览 token 安装（复用深度安装核心；成功即清理临时文件，失败保留以便重试） */
+    installImportSource(token: string): Promise<{ ok: boolean; id?: string; name?: string; version?: string; error?: string }>
+    /** 取消导入 / 关闭确认框：清理预览临时文件 */
+    discardImportSource(token: string): Promise<void>
+    /**
+     * 操作台 NPM 市场：按关键词 dlient-open-plugin 搜索 npm（main 直连 registry）。
+     * sort：downloads=按下载量（popularity 权重）/ date=按发布时间（本地排）；
+     * kind（app/plugin）与 tag（分类 key）作为检索关键词加入；返回已富化（含 dlient 元数据）的有效插件。
+     */
+    searchNpmMarket(opts: {
+      q?: string
+      sort?: 'downloads' | 'date'
+      kind?: 'all' | 'app' | 'plugin'
+      tag?: string
+      from?: number
+      size?: number
+    }): Promise<
+      | {
+          ok: true
+          total: number
+          hasMore: boolean
+          items: Array<{
+            name: string
+            title?: unknown
+            id: string
+            version: string
+            type: 'app' | 'plugin'
+            description?: unknown
+            date: string
+          }>
+        }
+      | { ok: false; error: string }
+    >
     uninstallPlugin(pluginId: string): Promise<{ ok: boolean; error?: string }>
     settingsGet(): Promise<{
       language?: 'zh-CN' | 'en-US'

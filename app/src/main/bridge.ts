@@ -15,6 +15,7 @@
 import { ipcMain, type WebContents, type MessagePortMain } from 'electron'
 import { DlientError, DlientErrorCode, RendererChannels } from '@dlient-open/core'
 import { appendPluginLog, clearPluginLog, formatPluginLogLine, readPluginLogs, setViewLogPush } from './lib/log'
+import { webviewDestroyByView } from './lib/webview'
 import type { DlientRuntime } from './runtime'
 
 export interface RendererView {
@@ -166,6 +167,9 @@ export function registerBridge(runtime: DlientRuntime, opts: BridgeOptions): voi
     for (const pluginSubs of subs.values()) {
       pluginSubs.delete(viewId)
     }
+    // 视图注销 → 回收它创建的 WebContentsView：组件卸载时自己发出的 destroy 会因身份已注销
+    // 而验签失败（React 卸载顺序为父先子），故在此按「创建者视图」兜底，确保组件卸载 = 资源回收。
+    webviewDestroyByView(viewId)
   })
 
   // 渲染层页面就绪（宿主壳 mounted）→ 触发核心插件引导（index.ts 注入；幂等）

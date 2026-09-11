@@ -23,10 +23,14 @@ export default function App() {
   const [showLogs, setShowLogs] = useState(false)
 
   useEffect(() => {
+    // 忽略位：请求返回前组件可能已卸载（React 18 StrictMode 下 effect 还会执行两次），
+    // 命中时直接丢弃结果，避免卸载后 setState。
+    let alive = true
     void api.log.write('info', 'app mounted', { page: 'main' })
     void api
       .request<string>('__PLUGIN_ID__.greet')
       .then((res) => {
+        if (!alive) return
         if (isApiOk(res)) {
           setGreeting(typeof res.data === 'string' ? res.data : '')
           void api.log.write('info', 'greet ok', { msg: res.data })
@@ -38,12 +42,18 @@ export default function App() {
         }
       })
       .catch((err) => {
+        if (!alive) return
         // 兜底：契约保证请求 resolve 信封不 throw，此处仅防御异常（规整为 ApiError 提示）
         void api.log.write('error', 'greet failed', { errCode: (err as { code?: number })?.code ?? -1 })
         setGreeting('')
         MessagePlugin.error(toApiError(err, locale).message)
       })
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (alive) setLoading(false)
+      })
+    return () => {
+      alive = false
+    }
   }, [api, locale])
 
   return (
@@ -52,7 +62,7 @@ export default function App() {
       <h1 className="demo-title">{t(`${NS}.title`)}</h1>
       {loading ? <Loading text={t(`${NS}.loading`)} /> : <p className="demo-text">{greeting || t(`${NS}.greetFailed`)}</p>}
       <button type="button" onClick={() => setShowLogs((s) => !s)} className="demo-btn">
-        {showLogs ? '收起日志' : '查看日志'}
+        {showLogs ? t(`${NS}.logsHide`) : t(`${NS}.logsShow`)}
       </button>
       {showLogs && <LogViewer className="demo-logs" />}
     </div>

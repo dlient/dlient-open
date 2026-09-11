@@ -63,6 +63,10 @@ export interface FsDirsDeclaration {
  *  - string：仅命令、参数不限（旧格式；注册时宿主 warn 提示“无参数约束”）；
  *  - { cmd, argsPattern }：命令 + 参数约束，逐参数正则匹配、自动锚定 `^(?:...)$`、长度上限。
  * 解释器（python3/node/bash 等）建议一律用对象规则，避免“授权即 RCE”。
+ *
+ * 命令可写绝对路径、basename，或命令别名（CMD_NODE / CMD_NPM / CMD_NPX / CMD_PNPM）：
+ * 别名由宿主在 spawn 时解析为真实可执行文件（lib/cmd-alias.ts），授权/记账/审计均按别名，
+ * 因此换机器 / 换 node 版本不会重新弹框。
  */
 export type SpawnRule = string | { cmd: string; argsPattern?: string }
 

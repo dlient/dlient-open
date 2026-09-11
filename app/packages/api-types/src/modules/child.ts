@@ -51,7 +51,12 @@ export interface ChildHandle {
 
 /** Options accepted by child.spawn as exposed by the SDK (same shape as ChildSpawnOptions). */
 export interface SpawnHostedOptions {
-  /** Command to run: absolute path, or executable name resolved through a stripped PATH. Required. */
+  /**
+   * Command to run: absolute path, executable name resolved through a stripped PATH, or one of the
+   * host-resolved command aliases (CMD_NODE / CMD_NPM / CMD_NPX / CMD_PNPM). Aliases are declared in
+   * `dlient.spawnCmds` and resolved by the host (bundled runtime first, then PATH); authorization and
+   * audit are recorded against the alias, so they survive runtime upgrades. Required.
+   */
   cmd: string
   /** Command-line arguments. Defaults to []. */
   args?: string[]

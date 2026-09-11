@@ -45,6 +45,16 @@ export function webviewDestroyByOwner(pluginId: unknown): void {
   getManager()?.destroyByOwner(String(pluginId ?? ''))
 }
 
+/** 销毁某渲染视图创建的全部 webview（视图注销 UNSET_VIEW 时调用，精确回收，见 manager 说明） */
+export function webviewDestroyByView(viewId: unknown): void {
+  getManager()?.destroyByView(String(viewId ?? ''))
+}
+
+/** 查询 webview 归属（IPC 层「仅创建者可操作」校验用） */
+export function webviewDescribe(viewId: unknown): { owner: string | null; createdByViewId: string | null } | null {
+  return getManager()?.describe(String(viewId ?? '')) ?? null
+}
+
 export function webviewGetActivePlugin(): unknown {
   return getManager()?.getActivePlugin() ?? null
 }

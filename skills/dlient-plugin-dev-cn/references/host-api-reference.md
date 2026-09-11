@@ -263,18 +263,27 @@ const cfg = await rpc.plugin.invoke('plugin-auth', 'plugin-auth.getConfig')   //
 
 ## 9. Webview
 
-在 UI 中通过渲染 **`@dlient-open/ui`** **的** **`Webview`** **组件**来插入 webview（不要手动创建视图，详见 `references/ui.md` §2.1）。插入后有两种方式控制显示 / 隐藏：
+在 UI 中通过渲染 **`@dlient-open/ui`** 的 **`Webview`** 组件来插入 webview（不要手动创建视图，详见 `references/ui.md` §2.1）。**无需在 `manifest.permissions` 声明任何权限**：组件经 `PluginView` 注入的「绑定本视图」客户端访问宿主（视图身份 + HMAC 签名），主进程只允许某视图操作**它自己创建**的 webview。
 
-- **宿主级显示 / 隐藏（多视图 / 编排，如顶部 tab 切换）** —— 调用以下两个方法（权限 `webview.create`）：
+插入后有两种方式控制显示 / 隐藏：
 
-| 方法                            | 参数（类型）               | 权限               | 用途                                    |
-| ----------------------------- | -------------------- | ---------------- | ------------------------------------- |
-| `webview.showWebviewByPlugin` | `(views?: string[])` | `webview.create` | 显示本插件视图（传列表时精确恢复其中缓存的 `viewId`）       |
-| `webview.hideWebviewByPlugin` | `()`                 | `webview.create` | 隐藏本插件视图 → 返回被隐藏的 `viewId` 列表，供切回时精确恢复 |
+- **组件级（最常用）** —— 给 `Webview` 组件传 `visible` 属性（`<Webview src={url} visible={activeTab === id} />`）；组件会自行同步可见性到宿主。
+- **宿主级显示 / 隐藏（多视图 / tab 编排）** —— 使用注入的客户端（`useWebviewClient()`）：
 
-- **组件级** —— 给 `Webview` 组件传 `visible` 属性（`<Webview src={url} visible={activeTab === id} />`）；组件会自行同步到主进程。
+| 客户端方法 | 参数（类型） | 用途 |
+| --- | --- | --- |
+| `showMine(views?: string[])` | `(views?: string[])` | 显示本插件视图（传列表时精确恢复其中缓存的 `viewId`） |
+| `hideMine()` | `()` | 隐藏本插件视图 → 返回被隐藏的 `viewId` 列表，供切回时精确恢复 |
 
-想保留页面状态就保持视图挂载并切换 `visible`；只有想销毁视图才卸载。需要宿主级精确恢复时，从 `Webview` 的 `onViewReady` 记下 `viewId`。
+```tsx
+import { useWebviewClient } from '@dlient-open/ui'
+
+const wv = useWebviewClient()    // 绑定当前视图；不在 PluginView 子树内时为 null
+const res = await wv?.hideMine() // → { code, data: string[] }（缓存这些 id）
+await wv?.showMine(cachedIds)    // 精确恢复
+```
+
+想保留页面状态就保持视图挂载并切换 `visible`；只有想销毁视图才卸载（卸载时即便回收请求未能送达，宿主也会按「创建者视图」自动回收）。需要宿主级精确恢复时，从 `Webview` 的 `onViewReady` 记下 `viewId`。
 
 ## 10. Worker 侧便捷 API（WorkerRpc）
 

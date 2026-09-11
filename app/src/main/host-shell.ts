@@ -22,6 +22,7 @@ import { upsertInstalledEntry, removeInstalledEntry, type InstalledPluginEntry }
 import { listPluginCapabilities, registerPluginImportProvider } from './lib/plugin'
 import { signPluginForDir, verifyPluginPackageStartable } from './org'
 import { broadcastAppSetting, useSystemNativeTheme } from './lib/theme'
+import { getMainLocale } from './i18n'
 import { atomicWriteFile, withFileLock } from './file-queue'
 
 const inflateRawAsync = promisify(inflateRaw)
@@ -207,16 +208,24 @@ export function registerHostShell(deps: HostShellDeps): void {
   )
 
   // ---- .dlient 导入（layout「导入插件」）：preview 解析 manifest + 权限清单 → 渲染层确认 → install ----
-  handle('preview-import-plugin', () => previewImportPlugin())
+  handle('preview-import-plugin', (filePath: unknown) => previewImportPlugin(typeof filePath === 'string' ? filePath : undefined))
   handle('install-import-plugin', (filePath: unknown) =>
     typeof filePath === 'string' && filePath.length > 0 ? installImportFrom(filePath) : { ok: false, error: 'missing import file' },
   )
+  // npm / github / 网址 导入：与本地文件导入共用「预览 → 确认 → 安装」流程（预览缓存 token 定位临时 .dlient）
+  // 注意：handle() 会剥掉 IPC event，处理函数第 1 个参数即 payload（不要再写 _event）
+  handle('preview-import-source', (source: unknown) => previewImportSource(typeof source === 'string' ? source : ''))
+  handle('install-import-source', (token: unknown) => installImportSource(typeof token === 'string' ? token : ''))
+  handle('discard-import-source', (token: unknown) => discardImportSource(typeof token === 'string' ? token : ''))
   // plugin.install host-api 提供方：复用 .dlient 深度安装核心（同源：文件 / npm / github / URL）
   registerPluginImportProvider((req) => pluginInstallFromRequest(req))
   // 渲染层安装确认结果回填（plugin.install 用户授权）
-  handle('plugin-install-confirm-result', (_event, confirmId: unknown, ok: unknown) => {
+  handle('plugin-install-confirm-result', (confirmId: unknown, ok: unknown) => {
     resolveInstallConfirm(String(confirmId ?? ''), ok === true)
   })
+
+  // 操作台 NPM 市场：关键词 dlient-open-plugin 搜索（main 直连 registry，免渲染层 CORS/CSP）
+  handle('npm-market-search', (opts: unknown) => searchNpmMarket((opts ?? {}) as NpmMarketQuery))
 
   // 校验插件包完整性（layout 打开前预检；@dev / dev 源码目录不受签名影响，签名损坏才报错）
   handle('verify-plugin', async (pluginId: unknown) => {
@@ -479,15 +488,27 @@ function validateNativeModules(nativeModules: unknown): string | null {
   return null
 }
 
+/**
+ * 解析 npm 执行方式：一律优先 `node <npm-cli.js>`。
+ * 不能直接 spawn `npm.cmd` —— Node ≥20 在 Windows 上 spawn `.cmd` / `.bat` 必须带 shell，
+ * 否则 execFile 会**同步抛** `spawn EINVAL`（npm 拉包 / 原生模块安装会直接失败）。
+ * npm-cli.js 由 resolveRuntime 的 npmCli 给出（node 同目录 node_modules/npm/bin），内置与系统运行时都可用。
+ */
+async function npmExecTarget(): Promise<{ cmd: string; args: string[] } | { error: string }> {
+  const rt = await resolveRuntime()
+  if (rt.source === 'none' || !rt.node) return { error: '未找到可用的 Node.js 运行时' }
+  if (rt.npmCli) return { cmd: rt.node, args: [rt.npmCli] }
+  if (process.platform === 'win32') return { error: '未找到 npm（缺少 npm-cli.js），请检查 Node.js 安装是否完整' }
+  return { cmd: 'npm', args: [] }
+}
+
 /** 异步执行 npm install（原生模块；等待退出，超时 kill） */
 async function npmInstall(pluginDir: string, args: string[]): Promise<{ ok: boolean; error?: string }> {
-  const rt = await resolveRuntime()
-  if (rt.source === 'none' || !rt.node) return { ok: false, error: 'node runtime not available for native modules' }
+  const target = await npmExecTarget()
+  if ('error' in target) return { ok: false, error: target.error }
   const npmArgs = await withNpmRegistry(['install', '--no-audit', '--no-fund', ...args])
-  const cmd = rt.npmCli && rt.source === 'bundled' ? rt.node : process.platform === 'win32' ? 'npm.cmd' : 'npm'
-  const finalArgs = rt.npmCli && rt.source === 'bundled' ? [rt.npmCli, ...npmArgs] : npmArgs
   return await new Promise((resolve) => {
-    const child = execFile(cmd, finalArgs, { cwd: pluginDir, timeout: 10 * 60 * 1000, maxBuffer: 64 * 1024 * 1024 }, (err) => {
+    const child = execFile(target.cmd, [...target.args, ...npmArgs], { cwd: pluginDir, timeout: 10 * 60 * 1000, maxBuffer: 64 * 1024 * 1024 }, (err) => {
       if (!err) return resolve({ ok: true })
       const message = err instanceof Error ? err.message : String(err)
       resolve({ ok: false, error: message })
@@ -606,34 +627,57 @@ function parsePreInstall(d: Record<string, unknown>): ImportDepItem[] {
   return list
 }
 
-/** preview：选文件 + 解析 manifest + 权限/依赖清单（不落盘）；用户取消文件选择返回 null */
-async function previewImportPlugin(): Promise<ImportPreviewResult> {
-  const filePath = await pickImportFile()
-  if (!filePath) return null
-  const r = await parseImportFile(filePath)
-  if ('error' in r) return { ok: false, error: r.error }
-  const { parsed } = r
+/**
+ * manifest 本地化文本字段（如 dlient.description 的 { default, 'zh-CN', 'en-US' }）：
+ * 按主进程当前语言取值，缺失回退 default；纯字符串原样返回。
+ */
+function pickLocalized(value: unknown): string | undefined {
+  if (typeof value === 'string') return value
+  if (!value || typeof value !== 'object') return undefined
+  const rec = value as Record<string, unknown>
+  const hit = rec[getMainLocale()] ?? rec.default
+  return typeof hit === 'string' && hit.trim() ? hit : undefined
+}
+
+/** 由已解析的导入包生成预览对象（权限 + preInstall 依赖清单）；本地文件与 npm/github/网址导入共用 */
+function buildImportPreview(parsed: ParsedImport): {
+  id: string
+  name: string
+  version: string
+  type?: string
+  description?: string
+  permissions: ImportPermItem[]
+  preInstall: ImportDepItem[]
+} {
   const d = parsed.d
   const rawPerms = d.permissions
   const perms = Array.isArray(rawPerms) ? rawPerms.map((x) => String(x)) : []
   const capByKey = new Map(listPluginCapabilities().map((c) => [c.key, c]))
   const desc = d.description
   return {
-    ok: true,
-    preview: {
-      filePath,
-      id: parsed.id,
-      name: parsed.name,
-      version: parsed.version,
-      type: typeof d.type === 'string' ? d.type : undefined,
-      description: typeof desc === 'string' ? desc : (desc as { default?: string } | undefined)?.default,
-      permissions: perms.map((key) => {
-        const meta = capByKey.get(key)
-        return { key, level: meta?.level ?? 'default', description: meta?.description ?? null }
-      }),
-      preInstall: parsePreInstall(d),
-    },
+    id: parsed.id,
+    name: parsed.name,
+    version: parsed.version,
+    type: typeof d.type === 'string' ? d.type : undefined,
+    description: pickLocalized(desc),
+    permissions: perms.map((key) => {
+      const meta = capByKey.get(key)
+      return { key, level: meta?.level ?? 'default', description: meta?.description ?? null }
+    }),
+    preInstall: parsePreInstall(d),
   }
+}
+
+/**
+ * preview：解析 manifest + 权限/依赖清单（不落盘）。
+ * 传入 filePath（拖入的文件）时直接解析；未传则弹系统文件选择框，用户取消返回 null。
+ */
+async function previewImportPlugin(filePath?: string): Promise<ImportPreviewResult> {
+  const target = typeof filePath === 'string' && filePath.trim() ? filePath.trim() : await pickImportFile()
+  if (!target) return null
+  const r = await parseImportFile(target)
+  if ('error' in r) return { ok: false, error: r.error }
+  return { ok: true, preview: { filePath: target, ...buildImportPreview(r.parsed) } }
 }
 
 // ---- preInstall 深度安装：manifest 声明依赖（npm semver / github release / .dlient 直链）----
@@ -695,13 +739,11 @@ async function runNpmCapture(
   cwd: string,
   timeoutMs = 180000,
 ): Promise<{ ok: boolean; stdout: string; stderr: string; code: number | null }> {
-  const rt = await resolveRuntime()
-  if (rt.source === 'none' || !rt.node) return { ok: false, stdout: '', stderr: 'node runtime not available', code: null }
+  const target = await npmExecTarget()
+  if ('error' in target) return { ok: false, stdout: '', stderr: target.error, code: null }
   const npmArgs = await withNpmRegistry(args)
-  const cmd = rt.npmCli && rt.source === 'bundled' ? rt.node : process.platform === 'win32' ? 'npm.cmd' : 'npm'
-  const finalArgs = rt.npmCli && rt.source === 'bundled' ? [rt.npmCli, ...npmArgs] : npmArgs
   return await new Promise((resolve) => {
-    const child = execFile(cmd, finalArgs, { cwd, timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024 }, (err, stdout, stderr) => {
+    const child = execFile(target.cmd, [...target.args, ...npmArgs], { cwd, timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (!err) return resolve({ ok: true, stdout: String(stdout ?? ''), stderr: String(stderr ?? ''), code: 0 })
       const code = typeof (err as { code?: unknown }).code === 'number' ? ((err as { code: number }).code) : null
       resolve({ ok: false, stdout: String(stdout ?? ''), stderr: String(stderr ?? ''), code })
@@ -734,26 +776,88 @@ async function downloadToTempFile(url: string, dir: string, name: string): Promi
   return out
 }
 
-/** preInstall → npm（semver）：npm pack 拉包 → tar 内根/dist/pack 找 .dlient → 落临时文件 */
-async function resolveNpmDepToFile(depId: string, spec: string): Promise<string> {
+/** npm pack 拉包 → 解 tar → 去顶层目录 → 返回包内容文件列表（失败返回错误文案） */
+async function npmPackEntries(
+  depId: string,
+  spec: string,
+): Promise<{ ok: true; entries: Array<{ name: string; data: Buffer }> } | { ok: false; error: string }> {
   const dir = await mkdtemp(join(tmpdir(), 'dlient-npm-'))
   try {
     const npmSpec = spec === 'latest' || spec === '*' || !spec ? depId : `${depId}@${spec}`
     const pack = await runNpmCapture(['pack', npmSpec, '--pack-destination', dir, '--no-audit', '--no-fund', '--loglevel', 'error'], dir)
-    if (!pack.ok) throw new Error(`npm 拉取失败（${depId}@${spec}）：${(pack.stderr || pack.stdout).slice(-300)}`)
+    if (!pack.ok) return { ok: false, error: `npm 拉取失败（${depId}@${spec}）：${(pack.stderr || pack.stdout).slice(-300)}` }
     const tgzFiles = (await readdir(dir)).filter((f) => f.endsWith('.tgz'))
-    if (tgzFiles.length === 0) throw new Error(`npm 拉取失败（${depId}@${spec}）：未得到 tarball`)
+    if (tgzFiles.length === 0) return { ok: false, error: `npm 拉取失败（${depId}@${spec}）：未得到 tarball` }
     const tgz = await readFile(join(dir, tgzFiles[0]))
     const tar = await gunzipAsync(tgz)
-    const content = pickDlientFromNpmPkg(parseTar(tar))
-    if (!content) throw new Error(`npm 包 ${depId} 内未找到 .dlient 产物（已查找包根目录及 dist/ pack/ 目录）`)
-    const out = join(dir, `${depId}.dlient`)
+    return { ok: true, entries: stripTarballRoot(parseTar(tar)) }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined)
+  }
+}
+
+/** preInstall → npm（semver）：npm pack 拉包 → tar 内根/dist/pack 找 .dlient → 落临时文件 */
+async function resolveNpmDepToFile(depId: string, spec: string): Promise<string> {
+  const r = await npmPackEntries(depId, spec)
+  if (!r.ok) throw new Error(r.error)
+  const content = pickDlientFromNpmPkg(r.entries)
+  if (!content) throw new Error(`npm 包 ${depId} 内未找到 .dlient 产物（已查找包根目录及 dist/ pack/ 目录）`)
+  const dir = await mkdtemp(join(tmpdir(), 'dlient-npm-'))
+  try {
+    // scoped 包名含 '/'，作为临时文件名会变成子目录 → 统一替换为 '_'
+    const out = join(dir, `${depId.replace(/[\\/]/g, '_')}.dlient`)
     await writeFile(out, content)
     return out
   } catch (err) {
     await rm(dir, { recursive: true, force: true }).catch(() => undefined)
     throw err
   }
+}
+
+/**
+ * npm 源解析（供「npm 导入插件」使用）：
+ * - 包内含 .dlient 产物 → { kind:'file' }（调用方在 finally 清理临时目录）；
+ * - 包本身是插件工程（package.json 含 dlient manifest）→ { kind:'parsed' }（entries 在内存，无需清理）；
+ * - 两者皆非 → { kind:'error' }
+ */
+async function resolveNpmSource(
+  depId: string,
+  spec: string,
+): Promise<{ kind: 'file'; filePath: string } | { kind: 'parsed'; parsed: ParsedImport } | { kind: 'error'; error: string }> {
+  const r = await npmPackEntries(depId, spec)
+  if (!r.ok) return { kind: 'error', error: r.error }
+  const { entries } = r
+  const dlient = entries.find((e) => e.name.toLowerCase().endsWith('.dlient'))
+  if (dlient) {
+    const dir = await mkdtemp(join(tmpdir(), 'dlient-npm-'))
+    try {
+      const filePath = join(dir, `${depId.replace(/[\\/]/g, '_')}.dlient`)
+      await writeFile(filePath, dlient.data)
+      return { kind: 'file', filePath }
+    } catch (err) {
+      await rm(dir, { recursive: true, force: true }).catch(() => undefined)
+      return { kind: 'error', error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+  const pkgEntry = entries.find((e) => e.name === 'package.json')
+  let pkg: ParsedImport['pkg'] | null = null
+  try {
+    pkg = pkgEntry ? (JSON.parse(pkgEntry.data.toString('utf-8')) as ParsedImport['pkg']) : null
+  } catch {
+    pkg = null
+  }
+  const d = pkg?.dlient
+  if (!d || typeof d !== 'object') {
+    return { kind: 'error', error: `npm 包 ${depId} 内未找到 .dlient 产物，且 package.json 无 dlient 插件 manifest` }
+  }
+  const id = String(d.id ?? '')
+  if (!id || !/^[a-z0-9-]+$/.test(id)) return { kind: 'error', error: `npm 包 ${depId} 的插件 ID 不合法：${id || '(缺失)'}` }
+  const version = String(d.version ?? pkg?.version ?? '0.0.0')
+  const dname = d.name
+  const name = typeof dname === 'string' ? dname : (dname as { default?: string } | undefined)?.default ?? id
+  return { kind: 'parsed', parsed: { filePath: '', entries, pkg: pkg as ParsedImport['pkg'], d, id, name, version } }
 }
 
 /** preInstall → github：取仓库最新 Release 中名为 *.dlient 的资产并下载 */
@@ -815,11 +919,8 @@ async function deepInstallDep(dep: ImportDepItem, visited: Set<string>): Promise
   }
 }
 
-/** 核心导入（含深度安装）：先装自身 preInstall 依赖（visited 防环/去重），再解包落盘自身 */
-async function installPackageFile(filePath: string, visited: Set<string>): Promise<ImportResult> {
-  const r = await parseImportFile(filePath)
-  if ('error' in r) return { ok: false, error: r.error }
-  const { parsed } = r
+/** 核心导入（含深度安装）：先装自身 preInstall 依赖（visited 防环/去重），再解包落盘自身；parsed 来自 .dlient 或 npm 插件工程 */
+async function installParsedImport(parsed: ParsedImport, visited: Set<string>): Promise<ImportResult> {
   const { pkg, d, id, name, version, entries } = parsed
   visited.add(id)
 
@@ -877,6 +978,13 @@ async function installPackageFile(filePath: string, visited: Set<string>): Promi
   deps.reportInstalled([entry])
   deps.broadcastChange(id, 'installed')
   return { ok: true, id, name, version, exists: pkg.source === 'market' }
+}
+
+/** install（.dlient 文件）：解析 → 深度安装 */
+async function installPackageFile(filePath: string, visited: Set<string>): Promise<ImportResult> {
+  const r = await parseImportFile(filePath)
+  if ('error' in r) return { ok: false, error: r.error }
+  return installParsedImport(r.parsed, visited)
 }
 
 /** install：执行导入（深度安装依赖 + 解包落盘 → 原生模块 → 注册表 → 上报 → 广播）；filePath 来自 preview 确认 */
@@ -988,6 +1096,305 @@ async function pluginInstallFromRequest(req: {
     } finally {
       await rm(dirname(tmpPath), { recursive: true, force: true }).catch(() => undefined)
     }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+// ---- npm / github / 网址 导入（操作台「导入插件」输入源；复用 installPackageFile 深度安装核心）----
+
+type ImportSourcePreviewBody = {
+  id: string
+  name: string
+  version: string
+  type?: string
+  description?: string
+  permissions: ImportPermItem[]
+  preInstall: ImportDepItem[]
+}
+
+type ImportSourcePreviewResult =
+  | {
+      ok: true
+      /** 预览缓存 token：确认安装 / 取消清理时凭此定位临时 .dlient */
+      token: string
+      kind: 'npm' | 'github' | 'url'
+      source: string
+      preview: ImportSourcePreviewBody
+    }
+  | { ok: false; error: string }
+
+/** 已解析的导入源：.dlient 临时文件（file，安装/取消后需清理）或 npm 插件工程（parsed，entries 在内存） */
+type ResolvedImportSource = { type: 'file'; filePath: string } | { type: 'parsed'; parsed: ParsedImport }
+
+/** 预览后的临时 .dlient 缓存（token → 解析结果）：安装成功后清理；未安装则 TTL 到期清理，避免泄漏临时文件 */
+const pendingSourceImports = new Map<string, { kind: 'npm' | 'github' | 'url'; source: string; resolved: ResolvedImportSource }>()
+let pendingSourceSeq = 0
+const PENDING_SOURCE_TTL_MS = 10 * 60 * 1000
+
+function dropSourceImport(token: string): void {
+  const ent = pendingSourceImports.get(token)
+  if (!ent) return
+  pendingSourceImports.delete(token)
+  if (ent.resolved.type === 'file') {
+    void rm(dirname(ent.resolved.filePath), { recursive: true, force: true }).catch(() => undefined)
+  }
+}
+
+/** 解析 npm / github / 网址 源 → 得到可安装的 .dlient 临时文件或 npm 插件工程（失败抛错误文案） */
+async function resolveImportSource(source: string, kind: 'npm' | 'github' | 'url'): Promise<ResolvedImportSource> {
+  if (kind === 'npm') {
+    const { name, spec } = parseNpmRef(source)
+    const r = await resolveNpmSource(name, spec)
+    if (r.kind === 'error') throw new Error(r.error)
+    return r.kind === 'file' ? { type: 'file', filePath: r.filePath } : { type: 'parsed', parsed: r.parsed }
+  }
+  if (kind === 'github') return { type: 'file', filePath: await resolveGithubDepToFile(source) }
+  return { type: 'file', filePath: await resolveUrlDepToFile(source) }
+}
+
+/** preview：解析 npm / github / 网址 源 → 拉取 .dlient 临时文件或 npm 插件工程 → 与本地文件同款预览（缓存待确认安装） */
+async function previewImportSource(source: string): Promise<ImportSourcePreviewResult> {
+  const raw = String(source ?? '').trim()
+  if (!raw) return { ok: false, error: '请输入 npm 包名、GitHub 地址或 .dlient 直链' }
+  const kind = detectInstallSourceKind(raw)
+  let resolved: ResolvedImportSource
+  try {
+    resolved = await resolveImportSource(raw, kind)
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+  let previewBody: ImportSourcePreviewBody
+  if (resolved.type === 'file') {
+    const r = await parseImportFile(resolved.filePath)
+    if ('error' in r) {
+      await rm(dirname(resolved.filePath), { recursive: true, force: true }).catch(() => undefined)
+      return { ok: false, error: r.error }
+    }
+    previewBody = buildImportPreview(r.parsed)
+  } else {
+    previewBody = buildImportPreview(resolved.parsed)
+  }
+  const token = `si-${++pendingSourceSeq}-${Date.now()}`
+  pendingSourceImports.set(token, { kind, source: raw, resolved })
+  const timer = setTimeout(() => dropSourceImport(token), PENDING_SOURCE_TTL_MS)
+  timer.unref()
+  return { ok: true, token, kind, source: raw, preview: previewBody }
+}
+
+/** install：按预览 token 安装（复用 installPackageFile / installParsedImport）；成功才清理临时文件，失败保留以便重试 */
+async function installImportSource(token: string): Promise<ImportResult> {
+  const ent = pendingSourceImports.get(String(token ?? ''))
+  if (!ent) return { ok: false, error: '导入预览已过期，请重新导入' }
+  const result =
+    ent.resolved.type === 'file'
+      ? await installPackageFile(ent.resolved.filePath, new Set<string>())
+      : await installParsedImport(ent.resolved.parsed, new Set<string>())
+  if (result.ok) dropSourceImport(String(token))
+  return result
+}
+
+/** discard：取消导入 / 关闭确认框时清理临时文件 */
+async function discardImportSource(token: string): Promise<void> {
+  dropSourceImport(String(token ?? ''))
+}
+
+// ---- 操作台「NPM 市场」：按关键词 dlient-open-plugin 搜索 npm，富化 dlient 元数据 ----
+
+/** 市场检索关键词：仅插件包允许使用（插件市场检索约定） */
+const NPM_MARKET_KEYWORD = 'dlient-open-plugin'
+/** 单次搜索页大小 */
+const NPM_MARKET_PAGE_SIZE = 30
+/** date 排序需一次拉全再本地按发布时间排序（npm search 无按时间排序参数） */
+const NPM_MARKET_MAX_FETCH = 250
+
+interface NpmMarketItem {
+  /** npm 包名（registry name） */
+  name: string
+  /** dlient 显示名（多语言对象/字符串，原样返回；由渲染层按当前语言解析） */
+  title?: unknown
+  /** dlient.id（无合法 id 的包不进入市场列表） */
+  id: string
+  version: string
+  /** app=应用（可打开）；plugin=插件（不可打开） */
+  type: 'app' | 'plugin'
+  /** dlient 描述（多语言对象/字符串，原样返回；由渲染层按当前语言解析） */
+  description?: unknown
+  /** 最近发布时间（ISO；search 结果 date） */
+  date: string
+}
+
+interface MarketMeta {
+  id: string
+  title?: unknown
+  type: 'app' | 'plugin'
+  version: string
+  description?: unknown
+}
+
+/** 包元数据缓存（registry <name>/latest 的 dlient 段；TTL 10min，避免分页重复拉取） */
+const marketMetaCache = new Map<string, { at: number; meta: MarketMeta }>()
+const MARKET_META_TTL_MS = 10 * 60 * 1000
+
+/** 拉取单个包元数据（含 dlient manifest；无合法 dlient.id 返回 null = 非有效插件） */
+async function fetchMarketMeta(name: string): Promise<MarketMeta | null> {
+  const cached = marketMetaCache.get(name)
+  if (cached && Date.now() - cached.at < MARKET_META_TTL_MS) return cached.meta
+  try {
+    const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(name)}/latest`, {
+      headers: { 'User-Agent': 'dlient-open' },
+      signal: fetchTimeoutSignal(15000),
+    })
+    if (!res.ok) return null
+    const pkg = (await res.json()) as { version?: unknown; dlient?: Record<string, unknown> }
+    const d = pkg.dlient
+    if (!d || typeof d !== 'object') return null
+    const id = typeof d.id === 'string' && /^[a-z0-9-]+$/.test(d.id) ? d.id : ''
+    if (!id) return null
+    const rawType = typeof d.type === 'string' ? d.type : 'app'
+    const meta: MarketMeta = {
+      id,
+      // 名称/描述保留原始多语言结构，由渲染层按当前语言解析（避免主进程语言缓存与缓存失效导致语言不一致）
+      title: d.name,
+      type: rawType === 'app' ? 'app' : 'plugin',
+      version: typeof pkg.version === 'string' ? pkg.version : '0.0.0',
+      description: d.description,
+    }
+    marketMetaCache.set(name, { at: Date.now(), meta })
+    return meta
+  } catch {
+    return null
+  }
+}
+
+/** npm 搜索命中（未富化：包名 / 版本 / 发布时间） */
+interface MarketHit {
+  name: string
+  version?: string
+  date?: string
+}
+
+/** 受限并发映射（避免一次性打爆 registry；供批量富化使用） */
+async function mapWithLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array<R>(items.length)
+  let next = 0
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      for (;;) {
+        const i = next++
+        if (i >= items.length) return
+        results[i] = await fn(items[i])
+      }
+    }),
+  )
+  return results
+}
+
+/** 调用 npm registry 搜索 API（返回原始命中，未富化） */
+async function fetchMarketHits(
+  queryText: string,
+  from: number,
+  size: number,
+  weights: Record<string, number>,
+): Promise<{ total: number; hits: MarketHit[] } | null> {
+  const params = new URLSearchParams({ text: queryText, from: String(from), size: String(size) })
+  for (const [k, v] of Object.entries(weights)) params.set(k, String(v))
+  const res = await fetch(`https://registry.npmjs.org/-/v1/search?${params}`, {
+    headers: { 'User-Agent': 'dlient-open' },
+    signal: fetchTimeoutSignal(30000),
+  }).catch(() => null)
+  if (!res || !res.ok) return null
+  const json = (await res.json()) as {
+    total?: unknown
+    objects?: Array<{ package?: { name?: unknown; version?: unknown; date?: unknown } }>
+  }
+  const hits: MarketHit[] = []
+  for (const o of Array.isArray(json.objects) ? json.objects : []) {
+    const p = o.package
+    const name = typeof p?.name === 'string' ? p.name : ''
+    if (!name) continue
+    hits.push({
+      name,
+      version: typeof p?.version === 'string' ? p.version : undefined,
+      date: typeof p?.date === 'string' ? p.date : undefined,
+    })
+  }
+  return { total: Number(json.total ?? 0), hits }
+}
+
+/** 富化一批命中（并发受限；无 dlient manifest 的包被过滤） */
+async function enrichMarketHits(hits: MarketHit[]): Promise<NpmMarketItem[]> {
+  const metas = await mapWithLimit(hits, 8, async (h) => {
+    const meta = await fetchMarketMeta(h.name)
+    if (!meta) return null
+    return {
+      name: h.name,
+      title: meta.title,
+      id: meta.id,
+      version: meta.version,
+      type: meta.type,
+      description: meta.description,
+      date: h.date ?? '',
+    } as NpmMarketItem
+  })
+  return metas.filter((x): x is NpmMarketItem => x != null)
+}
+
+/** date 排序缓存：一次拉 min(total,250) 按发布时间降序，分页从缓存切（避免每次翻页重复拉全量） */
+const marketDateCache = new Map<string, { at: number; total: number; hits: MarketHit[] }>()
+const MARKET_DATE_TTL_MS = 5 * 60 * 1000
+
+interface NpmMarketQuery {
+  /** 包名关键词（叠加在关键词 dlient-open-plugin 之上） */
+  q?: string
+  sort?: 'downloads' | 'date'
+  /** 类型筛选：all / app（应用）/ plugin（插件）——作为检索关键词加入 */
+  kind?: 'all' | 'app' | 'plugin'
+  /** 分类标签 key（如 ai / dev-tools）——作为检索关键词加入 */
+  tag?: string
+  from?: number
+  size?: number
+}
+
+/** 搜索 npm 上的 dlient 插件包：keyword + 类型 + 分类标签 + 包名关键词 + 排序；每页 NpmMarketItem[]（已富化/过滤无效包） */
+async function searchNpmMarket(opts: NpmMarketQuery): Promise<
+  { ok: true; total: number; items: NpmMarketItem[]; hasMore: boolean } | { ok: false; error: string }
+> {
+  const q = String(opts?.q ?? '').trim()
+  const sort = opts?.sort === 'date' ? 'date' : 'downloads'
+  const kind = opts?.kind === 'app' ? 'app' : opts?.kind === 'plugin' ? 'plugin' : 'all'
+  const tag = String(opts?.tag ?? '').trim()
+  const from = Math.max(0, Math.floor(Number(opts?.from) || 0))
+  const size = Math.min(250, Math.max(1, Math.floor(Number(opts?.size) || NPM_MARKET_PAGE_SIZE)))
+  // 检索规则：keywords:dlient-open-plugin（必填） + keywords:app/plugin（按类型筛选） + keywords:<分类标签 key> + 包名关键词（自由文本）；
+  // 明文（未编码）：fetchMarketHits 内部经 URLSearchParams 统一编码，避免双重编码
+  const text = [`keywords:${NPM_MARKET_KEYWORD}`]
+  if (kind === 'app') text.push('keywords:app')
+  else if (kind === 'plugin') text.push('keywords:plugin')
+  if (tag) text.push(`keywords:${tag}`)
+  if (q) text.push(q)
+  const queryText = text.join(' ')
+  try {
+    if (sort === 'date') {
+      // npm search API 无按时间排序参数：一次拉 min(total,250) 本地按 date 降序，翻页从缓存切
+      const key = `k:${kind}:${tag}:q:${q}`
+      let cached = marketDateCache.get(key)
+      if (!cached || Date.now() - cached.at > MARKET_DATE_TTL_MS) {
+        const all = await fetchMarketHits(queryText, 0, NPM_MARKET_MAX_FETCH, {})
+        if (!all) return { ok: false, error: 'npm 市场搜索失败（网络或 registry 不可用）' }
+        all.hits.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
+        cached = { at: Date.now(), total: all.total, hits: all.hits }
+        marketDateCache.set(key, cached)
+      }
+      const pageHits = cached.hits.slice(from, from + size)
+      const items = await enrichMarketHits(pageHits)
+      return { ok: true, total: cached.total, items, hasMore: from + size < cached.hits.length }
+    }
+    // 按下载量：npm search 以 popularity 权重排序（≈下载量），服务端分页
+    const page = await fetchMarketHits(queryText, from, size, { popularity: 1, quality: 0, maintenance: 0 })
+    if (!page) return { ok: false, error: 'npm 市场搜索失败（网络或 registry 不可用）' }
+    const items = await enrichMarketHits(page.hits)
+    return { ok: true, total: page.total, items, hasMore: from + size < page.total }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
   }

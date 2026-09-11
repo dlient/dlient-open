@@ -8,9 +8,10 @@
 import { spawn, execFile, type ChildProcess } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { DlientError, DlientErrorCode } from '@dlient-open/core'
+import { DlientError, DlientErrorCode, isCmdAlias } from '@dlient-open/core'
 import { killChild, registerChild } from '../child-registry'
 import { authorizeSpawn, registerGrantHooks, type ResourceAccessHooks } from './grants'
+import { resolveCmdAlias } from './cmd-alias'
 
 /** 宿主装配注入资源级授权 hooks（dialog / net / spawn 授权流 + executeHostApi system 判定）：
  * grants 转发 + 本模块 child-event 推送通道（resourceAccess?.sendToWorker 转发）。 */
@@ -76,11 +77,36 @@ export function clearHostedSpawnsByOwner(owner: string): void {
   }
 }
 
-/** spawn env 剥离：仅保留 PATH/HOME + 插件显式传入项（与 native-host 一致） */
+/** Windows 上子进程运行所需的最小系统环境（spawn shell / npm postinstall 必需；不含用户敏感数据）。
+ *  若缺失（如 ComSpec），npm 执行 esbuild 等包的 postinstall 时会因 spawnWithShell 拿不到 shell
+ *  路径而报 ERR_INVALID_ARG_TYPE: The "file" argument must be of type string. Received undefined。 */
+const SPAWN_ENV_WINDOWS_EXTRA: string[] = [
+  'ComSpec',
+  'SYSTEMROOT',
+  'WINDIR',
+  'PATHEXT',
+  'APPDATA',
+  'LOCALAPPDATA',
+  'USERPROFILE',
+  'HOMEDRIVE',
+  'HOMEPATH',
+  'PROGRAMFILES',
+  'PROGRAMFILES(X86)',
+  'PROCESSOR_ARCHITECTURE',
+  'NUMBER_OF_PROCESSORS',
+]
+
+/** spawn env 剥离：仅保留 PATH/HOME（Windows 额外保留系统必需变量）+ 插件显式传入项（与 native-host 一致） */
 function strippedSpawnEnv(env?: Record<string, string>): NodeJS.ProcessEnv {
   const base: Record<string, string | undefined> = {}
   if (process.env.PATH) base.PATH = process.env.PATH
   if (process.env.HOME) base.HOME = process.env.HOME
+  if (process.platform === 'win32') {
+    for (const k of SPAWN_ENV_WINDOWS_EXTRA) {
+      const v = process.env[k]
+      if (v) base[k] = v
+    }
+  }
   return { ...base, ...(env ?? {}) } as NodeJS.ProcessEnv
 }
 
@@ -183,12 +209,31 @@ export interface SpawnOptions {
   description?: string
 }
 
-export async function hostSpawnChild(pluginId: string, o: SpawnOptions): Promise<SpawnHandle> {
+/**
+ * 命令别名解析 + spawn 授权（hostSpawnChild / execFileChild 共用）。
+ *  - 别名（CMD_NODE 等）→ 宿主解析为真实可执行文件，前置参数（cli 脚本路径）拼在插件参数之前；
+ *  - 授权按**别名**记账（弹框/审计展示解析结果），换机器 / 换 node 版本不重弹；
+ *  - 确属别名但解析失败（本机无 node 且未装内置运行时）→ 报错，不静默降级为其它命令。
+ */
+async function authorizeResolvedSpawn(
+  pluginId: string,
+  o: SpawnOptions,
+): Promise<{ cmd: string; args: string[] }> {
   const cmd = String(o.cmd ?? '')
-  if (!cmd) throw new DlientError(DlientErrorCode.INVALID, 'spawn: cmd required')
-  const spawnAuth = await authorizeSpawn(pluginId, cmd, o.args ?? [], o.description)
-  if (!spawnAuth.ok) throw new DlientError(DlientErrorCode.USER_DENIED, 'user denied spawn')
-  const proc: ChildProcess = spawn(cmd, o.args ?? [], {
+  const alias = resolveCmdAlias(cmd)
+  if (!alias && isCmdAlias(cmd)) {
+    throw new DlientError(DlientErrorCode.NOT_INSTALLED, `spawn: command alias unresolvable: ${cmd}`)
+  }
+  const args = o.args ?? []
+  const auth = await authorizeSpawn(pluginId, cmd, args, o.description, alias?.cmd)
+  if (!auth.ok) throw new DlientError(DlientErrorCode.USER_DENIED, 'user denied spawn')
+  return { cmd: alias?.cmd ?? cmd, args: alias ? [...alias.args, ...args] : args }
+}
+
+export async function hostSpawnChild(pluginId: string, o: SpawnOptions): Promise<SpawnHandle> {
+  if (!String(o.cmd ?? '')) throw new DlientError(DlientErrorCode.INVALID, 'spawn: cmd required')
+  const { cmd, args } = await authorizeResolvedSpawn(pluginId, o)
+  const proc: ChildProcess = spawn(cmd, args, {
     cwd: o.cwd,
     env: strippedSpawnEnv(o.env),
     detached: o.detached ?? process.platform !== 'win32',
@@ -243,14 +288,12 @@ export async function hostSpawnChild(pluginId: string, o: SpawnOptions): Promise
 
 /** 宿主代 execFile（一次性捕获，探测类，如 node --version）：授权 → 执行 → 返回 stdout/stderr/code */
 export async function execFileChild(pluginId: string, o: SpawnOptions & { timeout?: number }): Promise<{ stdout: string; stderr: string; code: number }> {
-  const cmd = String(o.cmd ?? '')
-  if (!cmd) throw new DlientError(DlientErrorCode.INVALID, 'child.execFile: cmd required')
-  const spawnAuth = await authorizeSpawn(pluginId, cmd, o.args ?? [], o.description)
-  if (!spawnAuth.ok) throw new DlientError(DlientErrorCode.USER_DENIED, 'user denied spawn')
+  if (!String(o.cmd ?? '')) throw new DlientError(DlientErrorCode.INVALID, 'child.execFile: cmd required')
+  const { cmd, args } = await authorizeResolvedSpawn(pluginId, o)
   return new Promise((resolve) => {
     execFile(
       cmd,
-      o.args ?? [],
+      args,
       {
         cwd: o.cwd,
         env: strippedSpawnEnv(o.env),

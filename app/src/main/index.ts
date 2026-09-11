@@ -27,6 +27,7 @@ import { registerResourceAccessHooks } from './lib/child'
 import { registerNotifyTargets } from './notify'
 import { createDevPluginManager, type DevPluginManager } from './dev-plugins'
 import { createWebviewManager, type WebviewManager } from './webview-manager'
+import { registerWebviewIpc } from './webview-ipc'
 import { killAllChildren, cleanupStaleChildren } from './child-registry'
 import {
   pluginDirExists,
@@ -701,20 +702,14 @@ async function bootstrap() {
     },
   })
 
-  // WebView 管理器：承载插件经 hostApi 创建/更新/销毁 WebContentsView，事件按 owner 转发回其 worker
+  // WebView 管理器：渲染层经 preload 直连通道（webview:*，见 webview-ipc.ts）创建/更新/销毁 WebContentsView，
+  // webContents 事件按「创建者视图」定向推回渲染层（不再经插件 worker 中转）
   webviewManager = createWebviewManager({
     getWindow: () => mainWindow,
-    callWebviewWorker: (owner, method, args) => {
-      void (async () => {
-        if (!runtime!.isRunning(owner)) {
-          const res = await ensurePluginWorker(owner)
-          if (!res.ok) return
-        }
-        await runtime!.callWorker(owner, method, args)
-      })().catch((err) => console.error(`[webview-manager] ${method} failed:`, err))
-    },
+    pushEvent: (viewId, name, args) => pushUiEvent(viewId, 'webview:event', { viewId, name, args }),
   })
   registerWebviewManager(webviewManager)
+  registerWebviewIpc()
 
   app.on('will-quit', () => {
     // 阶段二：宿主退出 → 全量清理已登记子进程（防孤儿）

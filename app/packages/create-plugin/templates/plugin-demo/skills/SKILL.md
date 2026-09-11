@@ -17,6 +17,8 @@ This is a dlient plugin template created by the scaffold. It demonstrates the mi
 | Method | Args | Returns | Description |
 |--------|------|---------|-------------|
 | `__PLUGIN_ID__.greet` | — | `string` | Return a greeting message |
+| `__PLUGIN_ID__.echo` | — | error envelope | Business-error example (`rpc.error` + localized message) |
+| `__PLUGIN_ID__.guard` | — | error envelope | Throwing `PluginError` example (the SDK wraps it into a failure envelope) |
 
 ## Example
 

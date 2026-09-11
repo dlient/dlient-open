@@ -77,8 +77,7 @@ if (!(opts.native && !opts.nativeHost)) rmSync(join(target, 'script', 'build-nat
 // asar 已彻底禁用：生成的插件一律统一普通打包（dist 多文件），模板残留的 build-asar.mjs 直接剔除
 rmSync(join(target, 'script', 'build-asar.mjs'), { force: true })
 
-replacePlaceholders(target, { __PLUGIN_ID__: id, __PLUGIN_NAME__: name })
-// assets 装配（与 skill 文档 create-plugin.md「模板目录结构」一致）：
+replacePlaceholders(target, { __PLUGIN_ID__: id, __PLUGIN_NAME__: name })// assets 装配（与 skill 文档 create-plugin.md「模板目录结构」一致）：
 //   - 只保留按插件 id 生成的 icon.svg（不散装 A-Z 字母图标）；
 //   - 插件说明写入 assets/index.md（默认/英文）+ index.zh-CN.md + index.en-US.md；
 //   - mcp.json 收进 assets/；SKILL.md 保留在 skills/ 下。
@@ -138,8 +137,18 @@ function assembleAssets(root, id) {
   }
 }
 
-/** 遍历替换文本文件中的占位符（map：占位符 → 替换值；二进制/含 NUL 跳过） */
+/**
+ * 遍历替换文本文件中的占位符（map：占位符 → 替换值；二进制/含 NUL 跳过）。
+ * 容忍 Markdown 转义下划线：`__PLUGIN\_ID__` 与 `__PLUGIN_ID__` 都会被替换
+ * （否则 README 里被转义的标题会原样保留占位符）。
+ */
 function replacePlaceholders(root, replacements) {
+  const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const patterns = Object.entries(replacements).map(([ph, value]) => [
+    // 每个下划线前允许一个字面反斜杠（Markdown 转义）：正则源码 \\?_ = 可选的反斜杠 + 下划线
+    new RegExp(escapeRe(ph).replace(/_/g, '\\\\?_'), 'g'),
+    value,
+  ])
   const walk = (dir) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       if (SKIP_DIRS.has(entry.name)) continue
@@ -154,9 +163,12 @@ function replacePlaceholders(root, replacements) {
         }
         if (content.includes('\0')) continue
         let changed = false
-        for (const [ph, value] of Object.entries(replacements)) {
-          if (content.includes(ph)) {
-            content = content.split(ph).join(value)
+        for (const [pattern, value] of patterns) {
+          // 不用 pattern.test()：带 g 标志的正则会推进 lastIndex，跨文件判断会漏；
+          // 直接 replace 并比较结果（String.replace 自身不受 lastIndex 影响）。
+          const replaced = content.replace(pattern, value)
+          if (replaced !== content) {
+            content = replaced
             changed = true
           }
         }
@@ -182,7 +194,7 @@ function applyManifestOptions(root, opts, id) {
     // 路径 B：native-host 模式（官方 Node 子进程承载原生模块，免 @electron/rebuild）
     dlient.nativeModules = { useBundledNode: true, dependencies: {} }
     dlient.native = false
-    devDeps['@dlient-open/native-host-sdk'] = '^0.3.0'
+    devDeps['@dlient-open/native-host-sdk'] = '^0.1.1'
     devDeps['@types/node'] = '^20.0.0'
   } else if (opts.native) {
     // 路径 A：vendor 预编译 + @electron/rebuild（逐平台构建）
@@ -191,8 +203,8 @@ function applyManifestOptions(root, opts, id) {
     scripts['build:native'] = 'node script/build-native.mjs'
   }
 
-  // build 尾链：clean && build:ui && build:worker [+ build:native]
-  const chain = ['node script/build-clean.mjs', 'npm run build:ui', 'npm run build:worker']
+  // build 尾链：clean && typecheck && build:ui && build:worker [+ build:native]
+  const chain = ['node script/build-clean.mjs', 'npm run typecheck', 'npm run build:ui', 'npm run build:worker']
   if (scripts['build:native']) chain.push('npm run build:native')
   scripts.build = chain.join(' && ')
 

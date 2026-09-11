@@ -132,5 +132,4 @@ if (watchMode) {
   await build(workerOptions)
   if (hasNativeHost) await build(nativeHostOptions)
   for (const o of nativeEntryOptions) await build(o)
-  await obfuscateWorker(workerOut)
 }

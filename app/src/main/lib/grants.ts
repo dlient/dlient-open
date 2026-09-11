@@ -47,8 +47,14 @@ export async function authorizeFsAccess(
   const wantRead = perms.includes('fs.read')
   const wantWrite = perms.includes('fs.write')
   if (!wantRead && !wantWrite) return { ok: true }
+  // 已授权路径自动放行（对齐 permission.request 的「已授权项过滤」语义）：只对缺授权的路径弹框，
+  // 避免每次 dialog.showOpenDialog 都重复确认（用户勾「始终允许」后不应再见同一路径的弹框）。
+  const need = filePaths.filter(
+    (p) => (wantRead && !h.resourceGrants.fs.isPathAllowed(pluginId, p, 'read')) || (wantWrite && !h.resourceGrants.fs.isPathAllowed(pluginId, p, 'write')),
+  )
+  if (need.length === 0) return { ok: true }
   if (h.isSystemPlugin(pluginId)) {
-    for (const p of filePaths) {
+    for (const p of need) {
       if (wantRead) h.resourceGrants.fs.grant(pluginId, p, { mode: 'read' })
       if (wantWrite) h.resourceGrants.fs.grant(pluginId, p, { mode: 'write' })
     }
@@ -61,14 +67,14 @@ export async function authorizeFsAccess(
         fromName: pluginId,
         targetName: pluginId,
         method: wantRead && wantWrite ? mt('resource.fs.readwrite') : wantRead ? mt('resource.fs.read') : mt('resource.fs.write'),
-        resource: filePaths.join('；'),
+        resource: need.join('；'),
         desc: description,
       },
     ],
     canScope: true,
   })
   if (!r.allow) return { ok: false, reason: 'user denied' }
-  for (const p of filePaths) {
+  for (const p of need) {
     if (wantRead) h.resourceGrants.fs.grant(pluginId, p, { mode: 'read', scope: r.scope })
     if (wantWrite) h.resourceGrants.fs.grant(pluginId, p, { mode: 'write', scope: r.scope })
   }
@@ -150,12 +156,16 @@ export function buildSpawnCommandLine(cmd: string, args: string[]): string {
 /**
  * spawn 命令授权（§5.4 / 修复任务 F9）：命中白名单放行；args-denied（cmd 命中规则但参数违约）→ PERMISSION_DENIED 硬拒绝 + 审计；
  * 未命中（nomatch）→ system 免确认直接授权 cmd，否则发 spawn-confirm 弹框（展示完整命令行 `cmd + args`），按所选作用域写 spawn-grants。
+ *
+ * `resolvedCmd`：命令别名（CMD_NODE 等）经宿主解析后的真实可执行文件——**仅用于弹框展示**
+ * （`CMD_NODE → C:\...\node.exe --version`），授权与记账仍按别名 cmd，换机器 / 换版本不重弹。
  */
 export async function authorizeSpawn(
   pluginId: string,
   cmd: string,
   args: string[] = [],
   description?: string,
+  resolvedCmd?: string,
 ): Promise<{ ok: boolean; reason?: string }> {
   const h = hooks
   if (!h) return { ok: true } // 无授权环境（独立装配）：防御放行
@@ -176,6 +186,7 @@ export async function authorizeSpawn(
     h.resourceGrants.spawn.grant(pluginId, cmd)
     return { ok: true }
   }
+  const line = buildSpawnCommandLine(resolvedCmd ?? cmd, args)
   const r = await h.confirmResource({
     type: 'spawn-confirm',
     items: [
@@ -183,7 +194,8 @@ export async function authorizeSpawn(
         fromName: pluginId,
         targetName: pluginId,
         method: mt('resource.spawn'),
-        resource: buildSpawnCommandLine(cmd, args),
+        // 别名场景：`<别名> → <真实命令行>`（语言中立，插件/宿主无需本地化）
+        resource: resolvedCmd ? `${cmd} → ${line}` : line,
         desc: description,
       },
     ],

@@ -11,6 +11,7 @@
     "isolatedModules": true,
     "declaration": true,
     "emitDeclarationOnly": true,
+    "allowImportingTsExtensions": true,
     "outDir": "dist",
     "rootDir": "src"
   },

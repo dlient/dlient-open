@@ -1,7 +1,25 @@
 {
-  "name": "dsh",
-  "version": "0.1.0",
+  "name": "@dlient-open/dsh",
+  "version": "0.2.6",
+  "license": "MIT",
+  "description": "Run the DeepSeek Harness (dsh) AI agent inside dlient, with an embeddable chat surface for other plugins",
+  "keywords": [
+    "dlient-open-plugin",
+    "dlient",
+    "app",
+    "ai",
+    "deepseek",
+    "deepseek-harness",
+    "ai-agent",
+    "chat"
+  ],
   "type": "module",
+  "files": [
+    "dist",
+    "assets",
+    "script",
+    "*.dlient"
+  ],
   "dlient": {
     "id": "dsh",
     "name": {
@@ -26,20 +44,27 @@
       "linux.arm64"
     ],
     "permissions": [
-      "webview.create",
-      "webview.update",
-      "webview.destroy",
-      "webview.setVisible",
       "child.spawn",
       "child.execFile",
       "net.getFreePort",
       "net.probePort",
+      "app.getPath",
       "i18n.getLocale",
       "log.write",
       "nodejs.resolveRuntime",
-      "nodejs.install"
+      "nodejs.install",
+      "fs.read",
+      "fs.mkdir",
+      "fs.write",
+      "fs.delete",
+      "permission.request"
     ],
     "expose": {},
+    "spawnCmds": [
+      "CMD_NODE",
+      "CMD_NPM",
+      "CMD_PNPM"
+    ],
     "nodeVersion": "22",
     "system": false
   },
@@ -48,6 +73,7 @@
     "build:ui": "vite build",
     "build:worker": "node script/build-worker.mjs",
     "pack": "npm run build && node script/make-dlient.mjs",
+    "prepublishOnly": "npm run pack",
     "dev:watch": "vite build --watch",
     "dev:watch:worker": "node script/build-worker.mjs --watch",
     "dev": "concurrently -k \"npm:dev:watch\" \"npm:dev:watch:worker\""

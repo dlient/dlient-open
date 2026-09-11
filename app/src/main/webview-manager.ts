@@ -51,6 +51,10 @@ interface WebviewEntry {
    *  注意必须是 activePlugin 而非「创建方」：嵌套场景（A 渲染 B 的子页面、B 组件建 webview）下
    *  归属仍归 A（webview 属于 A 的页面上下文），layout 从 A 切到任何插件都能按归属隐藏。 */
   owner: string | null
+  /** 创建该 webview 的渲染视图 id（preload 校验视图身份后传入）。两个用途：
+   *  1. 视图注销（UNSET_VIEW）时按创建者精确回收，不依赖组件卸载时发出 destroy 的时序；
+   *  2. webContents 事件按「创建者视图」定向推送到渲染层（不再经插件 worker 中转）。 */
+  createdByViewId: string | null
   /** 组件层显式可见性（对应 ui 包 Webview 组件 WebviewProps.visible，缺省 true）；
    *  setVisible 时更新；setActivePlugin 对齐时若为 false 则硬隐藏，否则按 owner 规则判定 */
   visible: boolean
@@ -63,8 +67,8 @@ interface WebviewEntry {
 export interface WebviewManagerOptions {
   /** 当前主窗口（webview 挂载到 contentView；可能为 null，创建时再取） */
   getWindow: () => BrowserWindow | null
-  /** 主进程 → owner 插件 worker 调用（webContents 事件转发；owner 为 create 时的归属插件） */
-  callWebviewWorker: (owner: string, method: string, args: unknown[]) => void
+  /** 主进程 → 渲染层指定视图推送 webContents 事件（按 createdByViewId 定向；preload 按 viewId 路由给订阅者） */
+  pushEvent: (viewId: string, name: string, args: unknown[]) => void
 }
 
 export interface WebviewManager {
@@ -73,9 +77,13 @@ export interface WebviewManager {
   destroy: (viewId: string) => void
   /** 批量销毁某插件归属的全部 webview（插件卸载 / 覆盖安装时调用，防 worker 失效导致的泄漏） */
   destroyByOwner: (pluginId: string) => void
+  /** 销毁某渲染视图创建的全部 webview（视图注销时调用，防组件卸载清理请求未送达导致的泄漏） */
+  destroyByView: (viewId: string) => void
   /** 组件层显式可见性（ui 包 Webview 组件 visible prop）；同时更新 entry.visible 与视图实际可见 */
   setVisible: (viewId: string, visible: boolean) => void
   getActivePlugin: () => string | null
+  /** 只读查询某 webview 的归属（owner 插件 / 创建者视图）；供 IPC 层做「仅创建者可操作」校验 */
+  describe: (viewId: string) => { owner: string | null; createdByViewId: string | null } | null
   /** 基座能力（layout 切换内容区应用时调用）：更新归属并按 entry.visible 规则对齐可见性 */
   setActivePlugin: (pluginId: string | null) => void
   webContentsCall: (opts: unknown) => Promise<unknown>
@@ -116,11 +124,6 @@ export function createWebviewManager(options: WebviewManagerOptions): WebviewMan
   let seq = 0
   let activePlugin: string | null = null
   const entries = new Map<string, WebviewEntry>()
-
-  const notifyWorker = (owner: string | null, method: string, args: unknown[]) => {
-    // 事件转发失败不影响主流程（worker 未运行 / 未安装时静默丢弃）
-    if (owner) options.callWebviewWorker(owner, method, args)
-  }
 
   const showWebviewByPlugin = (pluginID: string, views?: string[]) => {
     const matched: string[] = []
@@ -220,11 +223,12 @@ export function createWebviewManager(options: WebviewManagerOptions): WebviewMan
     const view = new WebContentsView({ webPreferences: prefs })
 
     // 归属 = 当前活动插件（内容区应用；嵌套组件场景下归属渲染上下文插件，见 WebviewEntry 说明）
-    // 组件层可见性缺省 true（对应 ui 包 WebviewProps.visible 缺省）
+    // 创建者视图 = 调用方渲染视图（preload 已校验视图身份后传入）；组件层可见性缺省 true
     const owner = activePlugin
+    const createdByViewId = typeof o.createdByViewId === 'string' && o.createdByViewId ? o.createdByViewId : null
     const bounds = normalizeBounds(o.bounds)
-    console.log(`[webview:create] id=${id} owner=${owner} activePlugin=${activePlugin} bounds=${JSON.stringify(bounds)} src=${String(src).slice(0, 80)}`)
-    const entry: WebviewEntry = { id, view, win, owner, visible: true, bounds, attached: true }
+    console.log(`[webview:create] id=${id} owner=${owner} by=${createdByViewId} activePlugin=${activePlugin} bounds=${JSON.stringify(bounds)} src=${String(src).slice(0, 80)}`)
+    const entry: WebviewEntry = { id, view, win, owner, createdByViewId, visible: true, bounds, attached: true }
 
     // 先挂载再设 bounds：WebContentsView 未 addChildView 时 setBounds 可能不生效/被默认值覆盖
     win.contentView.addChildView(view)
@@ -234,11 +238,11 @@ export function createWebviewManager(options: WebviewManagerOptions): WebviewMan
 
     if (src) view.webContents.loadURL(src)
 
-    // 白名单事件监听 → 转发 owner 插件 worker（参数先做克隆安全化，剥离 Electron Event 等）
+    // 白名单事件监听 → 按「创建者视图」定向推送渲染层（参数先做克隆安全化，剥离 Electron Event 等）
     for (const name of events) {
       if (!SAFE_EVENTS.has(name)) continue
       view.webContents.on(name as never, (...args: unknown[]) => {
-        notifyWorker(owner, 'onWebContentsEvent', [{ viewId: id, name, args: sanitizeArgs(args) }])
+        if (createdByViewId) options.pushEvent(createdByViewId, name, sanitizeArgs(args))
       })
     }
 
@@ -266,6 +270,7 @@ export function createWebviewManager(options: WebviewManagerOptions): WebviewMan
       entry.view.webContents.close()
     }
     entries.delete(viewId)
+    console.log(`[webview:destroy] id=${viewId} owner=${entry.owner} by=${entry.createdByViewId}`)
   }
 
   /**
@@ -279,6 +284,17 @@ export function createWebviewManager(options: WebviewManagerOptions): WebviewMan
     }
   }
 
+  /**
+   * 销毁某渲染视图创建的全部 webview。
+   * 场景：PluginView 卸载时先注销视图身份（unsetView），子组件 Webview 随后发出的 destroy 会被
+   * preload 验签拒绝（时序不可控）→ 由主进程按创建者视图兜底，保证「组件卸载 = 资源回收」。
+   */
+  const destroyByView = (viewId: string): void => {
+    for (const id of Array.from(entries.keys())) {
+      if (entries.get(id)?.createdByViewId === viewId) destroy(id)
+    }
+  }
+
   const setVisible = (viewId: string, visible: boolean): void => {
     const entry = entries.get(viewId)
     if (entry && !entry.view.webContents.isDestroyed()) {
@@ -288,6 +304,11 @@ export function createWebviewManager(options: WebviewManagerOptions): WebviewMan
   }
 
   const getActivePlugin = (): string | null => activePlugin
+
+  const describe = (viewId: string): { owner: string | null; createdByViewId: string | null } | null => {
+    const entry = entries.get(viewId)
+    return entry ? { owner: entry.owner, createdByViewId: entry.createdByViewId } : null
+  }
 
   /** 基座切换内容区应用时调用（写归 layout 插件）；主进程按 entry.visible 规则对齐全部 webview 可见性 */
   const setActivePlugin = (pluginId: string | null): void => {
@@ -320,8 +341,10 @@ export function createWebviewManager(options: WebviewManagerOptions): WebviewMan
     update,
     destroy,
     destroyByOwner,
+    destroyByView,
     setVisible,
     getActivePlugin,
+    describe,
     setActivePlugin,
     webContentsCall,
     dispose,

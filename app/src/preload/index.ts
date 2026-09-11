@@ -18,7 +18,7 @@
  * subject = method（自调用）或 target_plugin_id|method（跨插件）。
  */
 
-import { contextBridge, ipcRenderer, webFrame } from 'electron'
+import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron'
 
 webFrame.setZoomFactor(1)
 
@@ -726,13 +726,74 @@ const dlientBridge = {
     nodejsStatus: (opts?: { version?: string }) => ipcRenderer.invoke('host-shell:nodejs-status', opts),
     nodejsInstall: (version?: string) => ipcRenderer.invoke('host-shell:nodejs-install', version),
     nodejsProgress: () => ipcRenderer.invoke('host-shell:nodejs-progress'),
-    previewImportPlugin: () => ipcRenderer.invoke('host-shell:preview-import-plugin'),
+    /** 预览导入：filePath 为空则弹系统文件选择框；传入（如拖入的文件路径）则直接解析该文件 */
+    previewImportPlugin: (filePath?: string) => ipcRenderer.invoke('host-shell:preview-import-plugin', filePath),
+    /** 拖入文件取真实路径（Electron 32+ 已移除 File.path，须在 preload 用 webUtils 解析） */
+    getPathForFile: (file: File) => webUtils.getPathForFile(file),
     confirmImportPlugin: (filePath: string) => ipcRenderer.invoke('host-shell:install-import-plugin', filePath),
+    /** npm / github / 网址 导入：预览（拉取 .dlient 临时文件并解析 manifest；返回 token 供确认安装） */
+    previewImportSource: (source: string) => ipcRenderer.invoke('host-shell:preview-import-source', source),
+    /** 按预览 token 安装（复用深度安装核心；成功后自动清理临时文件） */
+    installImportSource: (token: string) => ipcRenderer.invoke('host-shell:install-import-source', token),
+    /** 取消导入 / 关闭确认框：清理预览临时文件 */
+    discardImportSource: (token: string) => ipcRenderer.invoke('host-shell:discard-import-source', token),
+    /** 操作台 NPM 市场：按关键词 dlient-open-plugin 搜索（main 直连 registry）；sort=downloads/date；kind/tag 作为检索关键词加入 */
+    searchNpmMarket: (opts: {
+      q?: string
+      sort?: 'downloads' | 'date'
+      kind?: 'all' | 'app' | 'plugin'
+      tag?: string
+      from?: number
+      size?: number
+    }) => ipcRenderer.invoke('host-shell:npm-market-search', opts),
     uninstallPlugin: (pluginId: string) => ipcRenderer.invoke('host-shell:uninstall-plugin', pluginId),
     settingsGet: () => ipcRenderer.invoke('host-shell:settings-get'),
     settingsSet: (partial: unknown) => ipcRenderer.invoke('host-shell:settings-set', partial),
     about: () => ipcRenderer.invoke('host-shell:about'),
   },
+
+  /**
+   * 渲染层直连 webview（替代原 host-api 的 webview.*；插件无需在 manifest 声明 webview 权限）。
+   * 每个方法先按「视图身份 + HMAC」验签（subject = 'webview:<method>'），通过后转发主进程
+   * （webview-ipc.ts 再按「创建者视图」校验归属）；统一返回信封，失败不 reject。
+   * 事件（did-finish-load 等）不经此对象：主进程按创建者视图推送 'webview:event'，用 onEvent 订阅。
+   */
+  webview: (() => {
+    const forward = async (
+      method: string,
+      payload: { viewId: string; pluginId: string; timestamp: number; signature: string } & Record<string, unknown>,
+    ): Promise<unknown> => {
+      const subject = `webview:${method}`
+      if (!(await verifySignature({ ...payload, method: subject }))) {
+        return failureEnvelope(DlientErrorCode.INVALID_SIGNATURE, 'invalid view signature')
+      }
+      const { timestamp: _t, signature: _s, ...rest } = payload
+      void _t
+      void _s
+      try {
+        const data = await ipcRenderer.invoke(subject, rest)
+        return { code: 0, msg: '', data: data ?? null, from: 'host' }
+      } catch (err) {
+        return failureEnvelope(DlientErrorCode.INTERNAL, err instanceof Error ? err.message : String(err))
+      }
+    }
+    return {
+      create: (payload: { viewId: string; pluginId: string; timestamp: number; signature: string } & Record<string, unknown>) =>
+        forward('create', payload),
+      update: (payload: { viewId: string; pluginId: string; timestamp: number; signature: string } & Record<string, unknown>) =>
+        forward('update', payload),
+      destroy: (payload: { viewId: string; pluginId: string; timestamp: number; signature: string } & Record<string, unknown>) =>
+        forward('destroy', payload),
+      setVisible: (payload: { viewId: string; pluginId: string; timestamp: number; signature: string } & Record<string, unknown>) =>
+        forward('setVisible', payload),
+      call: (payload: { viewId: string; pluginId: string; timestamp: number; signature: string } & Record<string, unknown>) =>
+        forward('call', payload),
+      hideMine: (payload: { viewId: string; pluginId: string; timestamp: number; signature: string } & Record<string, unknown>) =>
+        forward('hideMine', payload),
+      showMine: (payload: { viewId: string; pluginId: string; timestamp: number; signature: string } & Record<string, unknown>) =>
+        forward('showMine', payload),
+    }
+  })(),
 }
 
 contextBridge.exposeInMainWorld('dlient', dlientBridge)

@@ -1,13 +1,19 @@
 /**
  * dsh 主界面（src/renderer/App.tsx）。
  * 启动 DSH web 服务（worker），就绪后用 webview 插件（Webview 组件）内嵌 http://127.0.0.1:<port>。
+ *
+ * 同时是插件 UI 入口模块：具名导出 Chat（dsh chat 面）供其它插件经
+ * `<PluginView pluginId="dsh" entry="Chat" />` 内嵌。
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button, Empty, Icon, Loading, useDlientApi, Webview, isApiOk, resolveApiMsg, defaultApiErrorMsg } from '@dlient-open/ui'
 import { useI18n } from '@dlient-open/i18n'
 import './styles.css'
 import './i18n'
+import { useDshAppearance } from './use-appearance'
+
+export { Chat } from './Chat'
 
 const NS = 'dsh'
 
@@ -25,35 +31,8 @@ export default function App() {
   const [status, setStatus] = useState<DshStatus>({ phase: 'idle' })
   const startingRef = useRef(false)
 
-  // 宿主语言/主题 → dsh settings.yaml 同步（worker 写文件，dsh 页面自动刷新）：
-  // 初始下发一次当前外观；此后监听宿主 language / theme 广播实时下发。
-  const darkRef = useRef(false)
-  const pushAppearance = useCallback(
-    (language: string, dark: boolean) => {
-      void api.request('dsh.applyAppearance', [language, dark]).catch(() => undefined)
-    },
-    [api],
-  )
-  useEffect(() => {
-    let lang = typeof locale === 'string' && locale ? locale : 'en-US'
-    let dark = darkRef.current
-    void pushAppearance(lang, dark)
-    const offLang = window.dlient.on('language', (l) => {
-      if (typeof l === 'string' && l) {
-        lang = l
-        void pushAppearance(lang, dark)
-      }
-    })
-    const offTheme = window.dlient.on('theme', (theme) => {
-      dark = theme === 'dark'
-      darkRef.current = dark
-      void pushAppearance(lang, dark)
-    })
-    return () => {
-      offLang()
-      offTheme()
-    }
-  }, [locale, pushAppearance])
+  // 宿主语言/主题 → dsh settings.yaml 同步（worker 写文件，dsh 页面自动刷新）
+  useDshAppearance()
 
   // 订阅 worker 推送的状态
   useEffect(() => {

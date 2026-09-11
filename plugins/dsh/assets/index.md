@@ -1,38 +1,31 @@
-# dsh (DeepSeek Harness)
+# dsh（DeepSeek Harness）
 
-## 1. Introduction
+## 1. 这是什么
 
-dsh runs the **DeepSeek Harness (dsh)** AI Agent Web UI inside dlient (`type: 'app'`).
+dsh 是一个在宿主中运行 **DeepSeek Harness（dsh）** AI 助手的插件。DeepSeek Harness 是一个 AI 智能体工作台，可以帮你完成日常的开发、写作等任务。
 
-- **Worker**: detects / installs Node.js (via the `nodejs` plugin) → `npm install -g @deepseek-ai/dsh` → starts `dsh web --no-open` (default `http://127.0.0.1:3080`), probes port readiness and hands the URL to the renderer.
-- **Renderer**: embeds the DSH web page with the `Webview` component from `@dlient-open/ui` (forwarded to a main-process WebContentsView via the worker's built-in `webview:*` bridge).
+它主要提供以下功能：
 
-```
-DSH (app) ─ worker: Node.js → npm i -g @deepseek-ai/dsh → dsh web --no-open
-DSH (renderer) ─ <Webview src=http://127.0.0.1:3080>
-```
+- **完整的 AI 助手界面**：配置模型、管理工作区、和 AI 进行对话。
+- **免安装使用**：运行所需的软件会自动安装与配置，无需你提前准备。
+- **聊天界面可嵌入其他插件**：提供一个简洁的聊天界面，其他插件（如 Dev Tools 的「AI」面板）可以直接调用 dsh 的 AI 能力。
+- **跟随宿主外观**：自动使用宿主当前的语言和主题，无需单独设置。
 
-## 2. Exported Methods
+## 2. 使用方法
 
-| Method | Description |
-|--------|-------------|
-| `dsh.start` | Ensure Node.js + DSH, start the `dsh web` service and return the URL |
-| `dsh.stop` | Stop the running `dsh web` service (and clean up the PID file / port) |
-| `dsh.status` | Query the service status (running / url) |
+1. 打开 dsh 应用；如果其他插件中使用了它的聊天界面，直接打开那个面板即可。
+2. 首次使用会自动安装所需环境，可能耗时几分钟，请耐心等待。
+3. 进入界面后，在「设置」中填写你的 AI 服务 API Key，然后选择一个工作区，即可开始使用。
 
-Key method signatures:
+## 3. 需要的权限
 
-```ts
-const { url } = await rpc.plugin.invoke('dsh', 'dsh.start')
-const status = await rpc.plugin.invoke('dsh', 'dsh.status')
-await rpc.plugin.invoke('dsh', 'dsh.stop')
-```
+- **运行软件**：需要启动 Node.js / npm 来安装和运行 dsh（由宿主自动解析运行环境，无需手动设置）。
+- **文件读写**：需要在宿主的数据目录中安装运行所需的文件；首次使用时可能会弹窗确认访问权限。
+- **访问本地端口**：dsh 界面通过本地端口提供，插件需要访问本地网络来显示界面。
+- **保存配置**：会读写 dsh 的配置文件（如界面语言与主题设置），以保证与宿主保持一致。
 
-## 3. Skills
+## 4. 依赖
 
-See [skills/SKILL.md](skills/SKILL.md) for the AI Agent skill provided by this plugin.
-
-## Dependencies
-
-- Built-in host-api `nodejs.*` (open-source host manages the runtime in the main process — there is no `nodejs` plugin): the worker calls `rpc.nodejs.resolveRuntime()` / `rpc.nodejs.install()` (requires the `nodejs.resolveRuntime` / `nodejs.install` manifest permissions). The `dlient.dependencies.nodejs` entry keeps the host readiness gate on the runtime.
-- Host UI `@dlient-open/ui`: `Webview` component (requires `webview.create` / `webview.navigate` permissions).
+- **宿主提供的运行环境**：运行 dsh 需要 Node.js，由宿主自动准备，无需你单独安装。
+- **供其他插件使用**：它的「聊天」功能可被其他插件内嵌（例如 Dev Tools 的「AI」面板）。
+- **与命令行版共享配置（可选）**：如果本机已通过命令行安装过 dsh，两者会共享同一份配置。

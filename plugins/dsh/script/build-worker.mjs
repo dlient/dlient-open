@@ -8,7 +8,7 @@
 //     运行时由官方 Node 子进程（<dist>/native-host.js）从插件目录 node_modules 解析；
 //   - 若存在 src/native-host/index.ts，额外产出 <dist>/native-host.js（纯 Node 入口，platform:node）。
 import { build, context } from 'esbuild'
-import { mkdirSync, readFileSync, existsSync } from 'node:fs'
+import { mkdirSync, readFileSync, readdirSync, existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -30,6 +30,46 @@ try {
 }
 const nativePkgs = Object.keys(manifest?.dlient?.nativeModules?.dependencies ?? {})
 
+// ---- 内置 dsh-chat-ui 资产：构建期内联为虚拟模块 'dlient:chat-assets' ----
+// 运行期不再读插件安装目录，因此 manifest 无需 fsDirs.read: PLUGINS——该别名授的是
+// 整个 <userData>/plugins 根目录（明显过授），平台设计意图也是插件不经 fs 读自身安装目录
+// （静态资源由 dlientOpen:// 协议提供）。assets/dsh-chat-ui 仍留在仓库作为构建源。
+const CHAT_ASSETS_DIR = path.join(__dirname, '..', 'assets', 'dsh-chat-ui')
+
+/** 递归收集 <CHAT_ASSETS_DIR> 下全部文件，返回 POSIX 相对路径 */
+function collectChatAssets(dir, base = '') {
+  const out = []
+  for (const ent of readdirSync(dir, { withFileTypes: true })) {
+    const rel = base ? `${base}/${ent.name}` : ent.name
+    if (ent.isDirectory()) out.push(...collectChatAssets(path.join(dir, ent.name), rel))
+    else if (ent.isFile()) out.push(rel)
+  }
+  return out
+}
+
+/** 虚拟模块：导出 CHAT_ASSETS_VERSION（资产版本）与 CHAT_ASSETS（相对路径 → 内容） */
+const chatAssetsPlugin = {
+  name: 'dlient:chat-assets',
+  setup(api) {
+    api.onResolve({ filter: /^dlient:chat-assets$/ }, () => ({ path: 'chat-assets', namespace: 'dlient-chat-assets' }))
+    api.onLoad({ filter: /.*/, namespace: 'dlient-chat-assets' }, () => {
+      if (!existsSync(CHAT_ASSETS_DIR)) throw new Error(`[chat-assets] missing: ${CHAT_ASSETS_DIR}`)
+      const files = collectChatAssets(CHAT_ASSETS_DIR)
+      const version = String(JSON.parse(readFileSync(path.join(CHAT_ASSETS_DIR, 'package.json'), 'utf-8')).version ?? '')
+      const entries = files.map(
+        (rel) => `${JSON.stringify(rel)}:${JSON.stringify(readFileSync(path.join(CHAT_ASSETS_DIR, rel), 'utf-8'))}`,
+      )
+      return {
+        loader: 'js',
+        contents: `export const CHAT_ASSETS_VERSION=${JSON.stringify(version)}\nexport const CHAT_ASSETS={${entries.join(',')}};\n`,
+        // watch 模式跟踪资产变化（改了 assets 也会触发重建）
+        watchFiles: files.map((rel) => path.join(CHAT_ASSETS_DIR, rel)),
+        watchDirs: [CHAT_ASSETS_DIR],
+      }
+    })
+  },
+}
+
 const baseOptions = {
   bundle: true,
   platform: 'node',
@@ -38,6 +78,7 @@ const baseOptions = {
   format: 'esm',
   target: 'node20',
   external: ['electron', ...nativePkgs],
+  plugins: [chatAssetsPlugin],
   // 方案 build.md 2.1：生产压缩；watch（dev）保持可读便于调试。
   minify: !watchMode,
   logLevel: 'info',

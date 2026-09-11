@@ -106,7 +106,9 @@ export interface PluginManifest {
    * read 与 write 分开声明（能读 ≠ 能写）；别名见 docs/specs/plugin-permission.md §4.2。
    */
   fsDirs?: { read?: string[]; write?: string[] }
-  /** spawn 命令声明（可执行文件绝对路径或 basename 或规则；安装时用户确认；系统二进制默认禁止）。
+  /** spawn 命令声明（可执行文件绝对路径、basename 或命令别名；安装时用户确认；系统二进制默认禁止）。
+   *  别名（CMD_NODE / CMD_NPM / CMD_NPX / CMD_PNPM，见 ./cmd-alias）由宿主解析为真实可执行文件，
+   *  并按别名记账——换机器 / 换 node 版本不重弹；其它字符串按原样做命令匹配。
    *  F9：string=仅命令（参数不限）；{ cmd, argsPattern }=命令 + 参数约束（逐参数正则、锚定、长度上限）。解释器建议对象规则。 */
   spawnCmds?: (string | { cmd: string; argsPattern?: string })[]
   /** 对外暴露给其它插件调用的方法（plugin.invoke 校验；access 见 ExposeAccess） */

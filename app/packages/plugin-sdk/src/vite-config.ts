@@ -22,6 +22,14 @@ export interface PluginViteConfigOptions {
 export function createPluginViteConfig(options: PluginViteConfigOptions): UserConfig {
   const { pluginDir, pluginId, uiEntry = 'src/renderer/App.tsx' } = options
 
+  // 生产构建的确定性：vite 的 isProduction 只认 `process.env.NODE_ENV`（vite CLI 不会替插件设置），
+  // 未设置时 @vitejs/plugin-react 会启用 jsxDEV → 产物内联 `react/jsx-dev-runtime`（dev 运行时）。
+  // 该模块不在宿主 SystemJS registry 的共享表内（只有 react / react/jsx-runtime / …），
+  // 无法通过 external 交给宿主，只能从源头避免：这里在 config 求值期兜底（早于 vite resolveConfig
+  // 读取该变量），使 `vite build` 与 `vite build --watch` 都产出生产版 JSX，产物体积与宿主共享一致。
+  // 需要开发期 JSX 告警时，可显式 `NODE_ENV=development` 覆盖（本行仅在未设置时生效）。
+  process.env.NODE_ENV ||= 'production'
+
   return defineConfig({
     root: pluginDir,
     plugins: [

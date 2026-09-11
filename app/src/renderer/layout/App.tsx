@@ -15,8 +15,8 @@
  * 插件清单来自宿主已安装注册表（~/.dlient-open/plugins 目录扫描）。
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
-import { Button, Empty, MessagePlugin, PluginIcon, modal } from '@dlient-open/ui'
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent } from 'react'
+import { Badge, Button, Empty, FileUp, Github, Input, Link, Loader2Icon, MessagePlugin, Package, PluginIcon, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, modal } from '@dlient-open/ui'
 import { useI18n } from '@dlient-open/i18n'
 import PluginBoot, { resolveLocalized, pluginName } from './PluginBoot'
 import SettingPage from '../setting/SettingPage'
@@ -44,6 +44,19 @@ const NS = 'plugin-layout'
 const RAIL_BTN_H = 32
 const RAIL_BTN_GAP = 6
 
+/** NPM 市场分类标签：key 即 npm 检索关键词（插件包 keywords 中需含对应 key 才能被分类筛到） */
+const MARKET_CATEGORIES: Array<{ key: string; zh: string; en: string }> = [
+  { key: 'ai', zh: 'AI 智能', en: 'AI & Intelligence' },
+  { key: 'productivity', zh: '办公效率', en: 'Productivity & Office' },
+  { key: 'content-creation', zh: '内容创作', en: 'Content Creation' },
+  { key: 'dev-tools', zh: '开发工具', en: 'Development Tools' },
+  { key: 'ui-design', zh: '界面设计', en: 'UI & Design' },
+  { key: 'finance', zh: '金融财务', en: 'Finance & Accounting' },
+  { key: 'games', zh: '游戏娱乐', en: 'Games & Entertainment' },
+  { key: 'education', zh: '教育学习', en: 'Education & Learning' },
+  { key: 'system', zh: '系统工具', en: 'System Utilities' },
+]
+
 /** 窗口控制图标：SVG 经 mask 渲染，颜色跟随 currentColor（亮/暗主题自适应） */
 function WinIcon({ src }: { src: string }) {
   return (
@@ -57,27 +70,29 @@ function WinIcon({ src }: { src: string }) {
   )
 }
 
-/** 是否有 UI（可被 PluginView 打开） */
-function hasUi(p: InstalledPluginInfo): boolean {
-  return p.type !== 'worker'
-}
-
-/** 应用卡片：名称 + 下方版本号 + 描述，点击打开；依赖缺失显示未就绪标识 */
+/** 应用卡片：图标 + 名称 + 版本(类型徽标) + 描述；应用可打开，插件点击提示不可打开；依赖缺失显示未就绪标识 */
 function AppCard({
   plugin,
   unready,
   onOpen,
 }: {
   plugin: InstalledPluginInfo
-  isOpen: boolean
   unready?: boolean
   onOpen: (id: string) => void
 }) {
   const { t, locale } = useI18n()
   const name = resolveLocalized(plugin.nameL10n ?? plugin.name, locale)
   const description = resolveLocalized(plugin.descriptionL10n ?? plugin.description, locale)
+  const isApp = plugin.type === 'app'
+  const open = () => {
+    if (isApp) onOpen(plugin.id)
+    else MessagePlugin.info(String(t(`${NS}.pluginNotOpenable`)))
+  }
   return (
-    <article className={`dl-card ${unready ? 'dl-card-unready' : 'dl-card-click'}`} onClick={() => onOpen(plugin.id)}>
+    <article
+      className={`dl-card ${unready ? 'dl-card-unready' : 'dl-card-click'} ${isApp ? '' : 'dl-card--plugin'}`}
+      onClick={open}
+    >
       <div className="dl-card-head">
         <PluginIcon pluginId={plugin.id} icon={plugin.icon} name={name} size={36} className="dl-card-icon" />
         <div className="dl-card-meta">
@@ -85,7 +100,12 @@ function AppCard({
             <span className="dl-card-name">{name}</span>
             {unready && <span className="dl-unready-badge">{t(`${NS}.unready`)}</span>}
           </div>
-          <span className="dl-card-version">v{plugin.version}</span>
+          <span className="dl-card-version">
+            v{plugin.version}
+            <span className={`dl-card-kind dl-card-kind--${isApp ? 'app' : 'plugin'}`}>
+              {isApp ? t(`${NS}.kindApp`) : t(`${NS}.kindPlugin`)}
+            </span>
+          </span>
         </div>
       </div>
       {description && <div className="dl-card-desc">{description}</div>}
@@ -93,12 +113,110 @@ function AppCard({
   )
 }
 
+/** NPM 市场条目（main 已按 dlient manifest 富化/过滤：仅有效插件） */
+type NpmMarketItem = {
+  name: string
+  /** dlient 显示名（多语言对象/字符串；渲染层按当前语言解析） */
+  title?: unknown
+  id: string
+  version: string
+  type: 'app' | 'plugin'
+  /** dlient 描述（多语言对象/字符串；渲染层按当前语言解析） */
+  description?: unknown
+  date: string
+}
+
+/** 简单 semver 比较：忽略前缀 v 与 prerelease 后缀，仅比较主/次/修订数字段；a>b 返回 1，相等 0，a<b 返回 -1 */
+function compareVersions(a: string, b: string): number {
+  const pa = String(a ?? '').replace(/^v/i, '').split(/[.-]/).map((x) => parseInt(x, 10) || 0)
+  const pb = String(b ?? '').replace(/^v/i, '').split(/[.-]/).map((x) => parseInt(x, 10) || 0)
+  const len = Math.max(pa.length, pb.length)
+  for (let i = 0; i < len; i++) {
+    const va = pa[i] ?? 0
+    const vb = pb[i] ?? 0
+    if (va !== vb) return va > vb ? 1 : -1
+  }
+  return 0
+}
+
+/** 市场卡片：无图标；版本(默认徽标) + 类型(success/warning 徽标)；查看(npm) + 导入/更新/已安装 按钮 */
+function MarketCard({
+  item,
+  installed,
+  updatable,
+  onInstall,
+}: {
+  item: NpmMarketItem
+  /** 已安装（按 dlient.id 匹配） */
+  installed: boolean
+  /** 市场版本高于已安装版本（按钮变为「更新」） */
+  updatable: boolean
+  /** 导入（npm 包名）：解析成功弹确认框返回 true；失败返回 false */
+  onInstall: (source: string) => Promise<boolean>
+}) {
+  const { t, locale } = useI18n()
+  const [installing, setInstalling] = useState(false)
+  const name = resolveLocalized(item.title, locale) || item.name
+  const description = resolveLocalized(item.description, locale)
+  const isApp = item.type === 'app'
+  const canAct = !installed || updatable
+  const install = async () => {
+    if (installing || !canAct) return
+    setInstalling(true)
+    try {
+      await onInstall(item.name)
+    } finally {
+      setInstalling(false)
+    }
+  }
+  const viewNpm = () => {
+    void window.dlient.hostShell
+      .openExternal(`https://www.npmjs.com/package/${encodeURIComponent(item.name)}`)
+      .catch(() => undefined)
+  }
+  return (
+    <article className="dl-card">
+      <div className="dl-card-meta">
+        <div className="dl-card-name-row">
+          <span className="dl-card-name">{name}</span>
+        </div>
+        <span className="dl-card-badges">
+          <Badge variant="default">v{item.version}</Badge>
+          <Badge variant={isApp ? 'success' : 'warning'}>{isApp ? t(`${NS}.kindApp`) : t(`${NS}.kindPlugin`)}</Badge>
+        </span>
+      </div>
+      {description ? <div className="dl-card-desc">{description}</div> : null}
+      <div className="dl-card-actions">
+        <Button size="sm" variant="outline" onClick={viewNpm}>
+          {t(`${NS}.marketView`)}
+        </Button>
+        <Button
+          size="sm"
+          loading={installing}
+          disabled={!canAct || installing}
+          onClick={install}
+        >
+          {!installed ? t(`${NS}.marketInstall`) : updatable ? t(`${NS}.marketUpdate`) : t(`${NS}.marketInstalled`)}
+        </Button>
+      </div>
+    </article>
+  )
+}
+
 type ImportReviewPerm = { key: string; level: string; description?: { 'zh-CN': string; 'en-US': string } | null }
 type ImportReviewDep = { id: string; source: string; kind: 'npm' | 'github' | 'url' }
 
+/** 权限风险权重（数值小的排前面）：dangerous 高风险置顶，其次 warn，最后 default */
+const PERM_RISK_WEIGHT: Record<string, number> = { dangerous: 0, warn: 1, default: 2 }
+
+/** 权限按危险等级排序：高风险在上（同级别保持 manifest 声明顺序） */
+function sortPermsByRisk(list: ImportReviewPerm[]): ImportReviewPerm[] {
+  return [...list].sort((a, b) => (PERM_RISK_WEIGHT[a.level] ?? 2) - (PERM_RISK_WEIGHT[b.level] ?? 2))
+}
+
 /**
  * 导入确认弹框正文：插件名/版本/描述 + 「权限 / 依赖」两个 tab。
- * - 权限：key（风险色点）+ 说明，两行一条
+ * - 权限：key（风险色点）+ 说明，两行一条；高风险在前
  * - 依赖（manifest preInstall）：插件 id + 配置内容，两行一条；npm / github 行点击在浏览器打开对应页面查看
  */
 function ImportReviewBody({
@@ -116,6 +234,7 @@ function ImportReviewBody({
   const [tab, setTab] = useState<'perms' | 'deps'>('perms')
   const loc = locale === 'en-US' ? 'en-US' : 'zh-CN'
   const deps = preview.preInstall ?? []
+  const perms = sortPermsByRisk(preview.permissions)
 
   const openDep = (dep: ImportReviewDep) => {
     const url = dep.kind === 'npm' ? `https://www.npmjs.com/package/${encodeURIComponent(dep.id)}` : dep.source
@@ -151,11 +270,11 @@ function ImportReviewBody({
       </div>
 
       {tab === 'perms' ? (
-        preview.permissions.length === 0 ? (
+        perms.length === 0 ? (
           <p className="dl-import-review-empty">{t(`${NS}.importNoPerms`)}</p>
         ) : (
           <ul className="dl-import-perms">
-            {preview.permissions.map((it) => {
+            {perms.map((it) => {
               const risk = it.level === 'dangerous' ? 'dangerous' : it.level === 'warn' ? 'warn' : 'default'
               return (
                 <li key={it.key} className={`dl-import-perm dl-import-perm--${risk}`}>
@@ -169,102 +288,520 @@ function ImportReviewBody({
             })}
           </ul>
         )
-      ) : deps.length === 0 ? (
-        <p className="dl-import-review-empty">{t(`${NS}.importNoDeps`)}</p>
       ) : (
-        <ul className="dl-import-deps">
-          {deps.map((dep) => {
-            const clickable = dep.kind === 'npm' || dep.kind === 'github'
-            return (
-              <li
-                key={dep.id}
-                className={`dl-import-dep ${clickable ? 'dl-import-dep--link' : ''}`}
-                title={clickable ? String(t(`${NS}.importDepViewHint`)) : undefined}
-                onClick={clickable ? () => openDep(dep) : undefined}
-              >
-                <span className="dl-import-dep-name">{dep.id}</span>
-                <span className="dl-import-dep-src">{dep.source}</span>
-              </li>
-            )
-          })}
-        </ul>
+        <div className="dl-import-deps-panel">
+          {deps.length === 0 ? (
+            <p className="dl-import-review-empty">{t(`${NS}.importNoDeps`)}</p>
+          ) : (
+            <ul className="dl-import-deps">
+              {deps.map((dep) => {
+                const clickable = dep.kind === 'npm' || dep.kind === 'github'
+                return (
+                  <li
+                    key={dep.id}
+                    className={`dl-import-dep ${clickable ? 'dl-import-dep--link' : ''}`}
+                    title={clickable ? String(t(`${NS}.importDepViewHint`)) : undefined}
+                    onClick={clickable ? () => openDep(dep) : undefined}
+                  >
+                    <span className="dl-import-dep-name">{dep.id}</span>
+                    <span className="dl-import-dep-src">{dep.source}</span>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
       )}
     </div>
   )
 }
 
-/** 操作台（layout 自有页）：最近打开 + 已安装应用；两者皆空显示空状态 */
-function ConsolePage({
-  recentApps,
-  installedApps,
-  opened,
-  unready,
-  onOpen,
+/** 导入来源类型：本地 .dlient 文件 / 直链网址 / npm 包 / GitHub 仓库 */
+type ImportSourceKind = 'local' | 'url' | 'npm' | 'github'
+
+/**
+ * 导入来源对话框正文：上方 4 个来源选框（本地文件 / 网址 / NPM 包 / Github，各带图标），
+ * 下方按来源显示「文件框（可点击、可拖入）」或「输入框」，最下方为全宽提交按钮。
+ */
+function ImportSourceDialog({
+  onLocalPreview,
+  onImportSource,
+  onDone,
 }: {
-  recentApps: InstalledPluginInfo[]
-  installedApps: InstalledPluginInfo[]
-  opened: string[]
-  unready: (id: string) => boolean
-  onOpen: (id: string) => void
+  /** 本地文件：不传路径 = 弹系统选择框；传路径 = 拖入的文件。解析成功（已弹确认框）返回 true */
+  onLocalPreview: (filePath?: string) => Promise<boolean>
+  /** npm / github / 网址：拉包解析。解析成功（已弹确认框）返回 true */
+  onImportSource: (source: string) => Promise<boolean>
+  /** 解析成功、确认框已弹出后调用（此时才关闭本弹框） */
+  onDone: () => void
 }) {
   const { t } = useI18n()
-  const isEmpty = recentApps.length === 0 && installedApps.length === 0
+  const [kind, setKind] = useState<ImportSourceKind>('local')
+  const [value, setValue] = useState('')
+  const [dropHover, setDropHover] = useState(false)
+  const [busy, setBusy] = useState(false)
 
-  if (isEmpty) {
-    return (
-      <div className="dl-empty-wrap">
-        <Empty
-          title={String(t(`${NS}.emptyTitle`))}
-          description={String(t(`${NS}.emptySub`))}
-          action={
-            <Button variant="default" onClick={() => onOpen('__import__')}>
-              {t(`${NS}.openMarket`)}
-            </Button>
-          }
-        />
-      </div>
-    )
+  const tabs: Array<{ id: ImportSourceKind; label: string; Icon: typeof FileUp }> = [
+    { id: 'local', label: String(t(`${NS}.importTabLocal`)), Icon: FileUp },
+    { id: 'url', label: String(t(`${NS}.importTabUrl`)), Icon: Link },
+    { id: 'npm', label: String(t(`${NS}.importTabNpm`)), Icon: Package },
+    { id: 'github', label: String(t(`${NS}.importTabGithub`)), Icon: Github },
+  ]
+
+  const hint =
+    kind === 'local'
+      ? String(t(`${NS}.importLocalHint`))
+      : kind === 'url'
+        ? String(t(`${NS}.importUrlHint`))
+        : kind === 'npm'
+          ? String(t(`${NS}.importNpmHint`))
+          : String(t(`${NS}.importGithubHint`))
+  const placeholder =
+    kind === 'url'
+      ? String(t(`${NS}.importUrlPlaceholder`))
+      : kind === 'npm'
+        ? String(t(`${NS}.importNpmPlaceholder`))
+        : String(t(`${NS}.importGithubPlaceholder`))
+
+  /**
+   * 执行一次解析：期间保持弹框打开、按钮显示 loading；
+   * 解析成功（确认框已弹出）才关闭本弹框，失败则留在原地让用户修改输入。
+   */
+  const run = async (task: () => Promise<boolean>) => {
+    if (busy) return
+    setBusy(true)
+    let ok = false
+    try {
+      ok = await task()
+    } finally {
+      setBusy(false)
+    }
+    if (ok) onDone()
+  }
+
+  /** 拖入 .dlient：Electron 32+ 已移除 File.path，经 preload 的 webUtils 取真实路径 */
+  const onDrop = (e: ReactDragEvent<HTMLButtonElement>) => {
+    e.preventDefault()
+    setDropHover(false)
+    const file = e.dataTransfer?.files?.[0]
+    if (!file) return
+    const filePath = window.dlient.hostShell.getPathForFile(file)
+    if (filePath) void run(() => onLocalPreview(filePath))
+  }
+
+  const submit = () => {
+    if (kind === 'local') void run(() => onLocalPreview())
+    else if (value.trim()) void run(() => onImportSource(value.trim()))
   }
 
   return (
-    <div className="dl-page-pad">
-      <div className="dl-console-header">
-        <div className="dl-console-title-block">
-          <h1 className="dl-console-title">{t(`${NS}.console`)}</h1>
-          <p className="dl-console-sub">{t(`${NS}.consoleSub`)}</p>
-        </div>
-        <Button variant="default" onClick={() => onOpen('__import__')}>
-          {t(`${NS}.importTitle`)}
-        </Button>
+    <div className="dl-import-source">
+      <div className="dl-import-kinds" role="tablist">
+        {tabs.map(({ id, label, Icon }) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={kind === id}
+            className={`dl-import-kind ${kind === id ? 'active' : ''}`}
+            disabled={busy}
+            onClick={() => {
+              setKind(id)
+              setValue('')
+            }}
+          >
+            <Icon size={16} />
+            <span>{label}</span>
+          </button>
+        ))}
       </div>
 
-      {recentApps.length > 0 && (
-        <section className="dl-section">
-          <div className="dl-section-head">
-            <h2 className="dl-section-title">{t(`${NS}.recentTitle`)}</h2>
-            <span className="dl-section-count">{t(`${NS}.count`, { count: recentApps.length })}</span>
-          </div>
-          <div className="dl-grid">
-            {recentApps.map((p) => (
-              <AppCard key={p.id} plugin={p} isOpen={opened.includes(p.id)} unready={unready(p.id)} onOpen={onOpen} />
-            ))}
-          </div>
-        </section>
-      )}
+      <div className="dl-import-body">
+        <p className="dl-import-hint">{hint}</p>
+        {kind === 'local' ? (
+          <button
+            type="button"
+            className={`dl-import-dropzone ${dropHover ? 'hover' : ''}`}
+            disabled={busy}
+            onClick={submit}
+            onDragOver={(e) => {
+              e.preventDefault()
+              setDropHover(true)
+            }}
+            onDragLeave={() => setDropHover(false)}
+            onDrop={onDrop}
+          >
+            <FileUp size={20} />
+            <span>{String(t(`${NS}.importBtnPick`))}</span>
+          </button>
+        ) : (
+          <Input
+            autoFocus
+            placeholder={placeholder}
+            value={value}
+            disabled={busy}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') submit()
+            }}
+          />
+        )}
+      </div>
 
-      {installedApps.length > 0 && (
-        <section className="dl-section">
-          <div className="dl-section-head">
-            <h2 className="dl-section-title">{t(`${NS}.installedTitle`)}</h2>
-            <span className="dl-section-count">{t(`${NS}.count`, { count: installedApps.length })}</span>
+      <Button
+        size="lg"
+        className="dl-import-submit"
+        loading={busy}
+        onClick={submit}
+        disabled={kind !== 'local' && !value.trim()}
+      >
+        {kind === 'local' ? String(t(`${NS}.importBtnPick`)) : String(t(`${NS}.importBtnImport`))}
+      </Button>
+    </div>
+  )
+}
+
+type ConsoleTab = 'installed' | 'market'
+type KindFilter = 'all' | 'app' | 'plugin'
+type MarketSort = 'downloads' | 'date'
+
+/** 操作台（layout 自有页）：已安装 / NPM市场 两个 tab（自定义 tab，切换不重渲染）+ 吸顶头部 + 类型筛选/搜索工具条 */
+function ConsolePage({
+  plugins,
+  recent,
+  unready,
+  onOpen,
+  onInstallSource,
+}: {
+  plugins: InstalledPluginInfo[]
+  recent: string[]
+  unready: (id: string) => boolean
+  onOpen: (id: string) => void
+  /** 市场卡片导入（npm 包名 → 复用预览确认 → 安装链路） */
+  onInstallSource: (source: string) => Promise<boolean>
+}) {
+  const { t, locale } = useI18n()
+  const [tab, setTab] = useState<ConsoleTab>('installed')
+  const [kindFilter, setKindFilter] = useState<KindFilter>('all')
+  const [search, setSearch] = useState('')
+  const [installedQuery, setInstalledQuery] = useState('')
+  const [marketSort, setMarketSort] = useState<MarketSort>('downloads')
+  const [marketTag, setMarketTag] = useState('')
+  const [marketItems, setMarketItems] = useState<NpmMarketItem[]>([])
+  const [marketLoading, setMarketLoading] = useState(false)
+  const [marketError, setMarketError] = useState('')
+  const [marketEnded, setMarketEnded] = useState(false)
+  const marketInited = useRef(false)
+  const marketSeq = useRef(0)
+  const marketItemsRef = useRef<NpmMarketItem[]>([])
+  const marketQueryRef = useRef('')
+  const marketSortRef = useRef<MarketSort>('downloads')
+  const marketKindRef = useRef<KindFilter>('all')
+  const marketTagRef = useRef('')
+  useEffect(() => {
+    marketItemsRef.current = marketItems
+  }, [marketItems])
+
+  /** 已安装清单：按打开时间排序（最近在前），未打开过的排最后（按名称） */
+  const installedList = useMemo(() => {
+    const rank = new Map(recent.map((id, i) => [id, i]))
+    const list = plugins.filter((p) => p.source !== 'dev' && !p.system && p.id !== CONSOLE && p.id !== SETTING)
+    return [...list].sort((a, b) => {
+      const ra = rank.has(a.id) ? rank.get(a.id)! : Number.MAX_SAFE_INTEGER
+      const rb = rank.has(b.id) ? rank.get(b.id)! : Number.MAX_SAFE_INTEGER
+      if (ra !== rb) return ra - rb
+      return (pluginName(a, locale) || a.id).localeCompare(pluginName(b, locale) || b.id)
+    })
+  }, [plugins, recent, locale])
+
+  /** 已安装：类型 + 搜索过滤（应用可打开，插件不可打开） */
+  const filteredInstalled = useMemo(() => {
+    const q = installedQuery.trim().toLowerCase()
+    return installedList.filter((p) => {
+      if (kindFilter === 'app' && p.type !== 'app') return false
+      if (kindFilter === 'plugin' && p.type === 'app') return false
+      if (!q) return true
+      const name = (pluginName(p, locale) || p.id).toLowerCase()
+      return name.includes(q) || p.id.toLowerCase().includes(q)
+    })
+  }, [installedList, installedQuery, kindFilter, locale])
+
+  /** 市场：类型过滤（客户端，作用于已加载列表） */
+  const filteredMarket = useMemo(
+    () =>
+      marketItems.filter((it) =>
+        kindFilter === 'all' ? true : kindFilter === 'app' ? it.type === 'app' : it.type === 'plugin',
+      ),
+    [marketItems, kindFilter],
+  )
+
+  /** 已安装插件版本表（市场卡片据此判断「已安装」与「可更新」） */
+  const installedVersions = useMemo(() => new Map(plugins.map((p) => [p.id, p.version])), [plugins])
+
+  /** 执行市场搜索（reset=从头 / false=加载更多追加） */
+  const runMarketSearch = useCallback(async (reset: boolean) => {
+    const seq = ++marketSeq.current
+    const q = marketQueryRef.current
+    const sort = marketSortRef.current
+    const kind = marketKindRef.current
+    const tag = marketTagRef.current
+    setMarketError('')
+    if (reset) {
+      setMarketItems([])
+      setMarketEnded(false)
+    }
+    setMarketLoading(true)
+    try {
+      const from = reset ? 0 : marketItemsRef.current.length
+      const res = await window.dlient.hostShell.searchNpmMarket({ q, sort, kind, tag, from, size: 30 })
+      if (seq !== marketSeq.current) return
+      if (!res.ok) {
+        setMarketError(res.error ?? '')
+        return
+      }
+      setMarketItems((prev) => (reset ? res.items : [...prev, ...res.items]))
+      if (res.items.length === 0 || !res.hasMore) setMarketEnded(true)
+    } catch (err) {
+      if (seq === marketSeq.current) setMarketError(err instanceof Error ? err.message : String(err))
+    } finally {
+      if (seq === marketSeq.current) setMarketLoading(false)
+    }
+  }, [])
+
+  /** 首次切到市场 tab 自动按关键词搜索（之后切回保留结果，不重渲染） */
+  const activateMarket = () => {
+    setTab('market')
+    if (!marketInited.current) {
+      marketInited.current = true
+      marketKindRef.current = kindFilter
+      marketTagRef.current = marketTag
+      void runMarketSearch(true)
+    }
+  }
+
+  /** 类型筛选变化：已安装 tab 仅客户端过滤；市场 tab 作为检索关键词重新搜索 */
+  const onKindChange = (v: KindFilter) => {
+    setKindFilter(v)
+    if (tab !== 'market' || !marketInited.current) return
+    marketKindRef.current = v
+    void runMarketSearch(true)
+  }
+
+  /** 分类标签点击：单选切换（再点取消）；市场 tab 按标签关键词重新搜索 */
+  const onTagChange = (key: string) => {
+    const next = marketTag === key ? '' : key
+    setMarketTag(next)
+    if (tab !== 'market' || !marketInited.current) return
+    marketTagRef.current = next
+    void runMarketSearch(true)
+  }
+
+  const submitSearch = () => {
+    if (tab === 'installed') {
+      setInstalledQuery(search)
+      return
+    }
+    marketQueryRef.current = search.trim()
+    marketSortRef.current = marketSort
+    marketKindRef.current = kindFilter
+    marketTagRef.current = marketTag
+    marketInited.current = true
+    void runMarketSearch(true)
+  }
+
+  /** 切换市场排序：已搜索过则按新排序重新搜索 */
+  const onSortChange = (v: MarketSort) => {
+    setMarketSort(v)
+    if (!marketInited.current) return
+    marketSortRef.current = v
+    void runMarketSearch(true)
+  }
+
+  /** 市场：滚动到底加载更多 */
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (tab !== 'market') return
+    const el = sentinelRef.current
+    if (!el) return
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return
+        if (marketLoading || marketEnded) return
+        void runMarketSearch(false)
+      },
+      { rootMargin: '240px' },
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [tab, marketLoading, marketEnded, runMarketSearch])
+
+  return (
+    <div className="dl-console">
+      {/* 吸顶：页头 + tab 栏 + 工具条（滚动时保持可见） */}
+      <div className="dl-console-sticky">
+        <div className="dl-console-header">
+          <div className="dl-console-title-block">
+            <h1 className="dl-console-title">{t(`${NS}.console`)}</h1>
+            <p className="dl-console-sub">{t(`${NS}.consoleSub`)}</p>
           </div>
-          <div className="dl-grid">
-            {installedApps.map((p) => (
-              <AppCard key={p.id} plugin={p} isOpen={opened.includes(p.id)} unready={unready(p.id)} onOpen={onOpen} />
-            ))}
+          <Button variant="default" onClick={() => onOpen('__import__')}>
+            {t(`${NS}.importTitle`)}
+          </Button>
+        </div>
+
+        <div className="dl-console-tabbar">
+          <div className="dl-console-tabs" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'installed'}
+              className={`dl-console-tab ${tab === 'installed' ? 'active' : ''}`}
+              onClick={() => setTab('installed')}
+            >
+              {t(`${NS}.consoleTabsInstalled`)}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'market'}
+              className={`dl-console-tab ${tab === 'market' ? 'active' : ''}`}
+              onClick={activateMarket}
+            >
+              {t(`${NS}.consoleTabsMarket`)}
+            </button>
           </div>
-        </section>
-      )}
+          <div className="dl-console-toolbar">
+            <Select
+              value={kindFilter}
+              onValueChange={(v) => onKindChange(v as KindFilter)}
+            >
+              <SelectTrigger size="sm" aria-label={String(t(`${NS}.filterKind`))}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t(`${NS}.filterAll`)}</SelectItem>
+                <SelectItem value="app">{t(`${NS}.filterApp`)}</SelectItem>
+                <SelectItem value="plugin">{t(`${NS}.filterPlugin`)}</SelectItem>
+              </SelectContent>
+            </Select>
+            {tab === 'market' && (
+              <Select
+                value={marketSort}
+                onValueChange={(v) => onSortChange(v as MarketSort)}
+              >
+                <SelectTrigger size="sm" aria-label={String(t(`${NS}.marketSortLabel`))}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="downloads">{t(`${NS}.marketSortDownloads`)}</SelectItem>
+                  <SelectItem value="date">{t(`${NS}.marketSortDate`)}</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+            <Input
+              className="dl-console-search"
+              placeholder={String(t(`${NS}.searchPlaceholder`))}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitSearch()
+              }}
+            />
+            <Button size="sm" onClick={submitSearch}>
+              {t(`${NS}.searchBtn`)}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="dl-console-body">
+        {/* 已安装：按打开时间排序；应用可打开 / 插件点击提示不可打开 */}
+        <div className="dl-console-panel" style={{ display: tab === 'installed' ? 'block' : 'none' }}>
+          {filteredInstalled.length === 0 ? (
+            <div className="dl-empty-wrap">
+              <Empty
+                title={String(t(installedList.length === 0 ? `${NS}.installedEmpty` : `${NS}.installedNoMatch`))}
+                description={
+                  installedList.length === 0 ? String(t(`${NS}.installedEmptySub`)) : String(t(`${NS}.installedNoMatchSub`))
+                }
+                action={
+                  installedList.length === 0 ? (
+                    <Button variant="default" onClick={activateMarket}>
+                      {t(`${NS}.goMarket`)}
+                    </Button>
+                  ) : undefined
+                }
+              />
+            </div>
+          ) : (
+            <div className="dl-grid">
+              {filteredInstalled.map((p) => (
+                <AppCard key={p.id} plugin={p} unready={unready(p.id)} onOpen={onOpen} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* NPM市场：分类标签 + 关键词检索（dlient-open-plugin + 类型 + 标签 + 包名）+ 排序；每页 30 下拉加载更多 */}
+        <div className="dl-console-panel" style={{ display: tab === 'market' ? 'block' : 'none' }}>
+          <div className="dl-market-tags">
+            {MARKET_CATEGORIES.map((cat) => {
+              const active = marketTag === cat.key
+              return (
+                <button
+                  key={cat.key}
+                  type="button"
+                  className={`dl-market-tag ${active ? 'active' : ''}`}
+                  aria-pressed={active}
+                  onClick={() => onTagChange(cat.key)}
+                >
+                  {locale === 'en-US' ? cat.en : cat.zh}
+                </button>
+              )
+            })}
+          </div>
+          {marketError ? (
+            <p className="dl-console-error">{t(`${NS}.marketSearchFailed`, { reason: marketError })}</p>
+          ) : marketLoading && marketItems.length === 0 ? (
+            <div className="dl-market-loading">
+              <Loader2Icon className="dl-spin" size={18} />
+              <span>{t(`${NS}.marketSearching`)}</span>
+            </div>
+          ) : filteredMarket.length === 0 ? (
+            <div className="dl-empty-wrap">
+              <Empty title={String(t(`${NS}.marketEmpty`))} description={String(t(`${NS}.marketEmptySub`))} />
+            </div>
+          ) : (
+            <>
+              <div className="dl-grid">
+                {filteredMarket.map((it) => {
+                  const installedVer = installedVersions.get(it.id)
+                  return (
+                    <MarketCard
+                      key={it.name}
+                      item={it}
+                      installed={installedVer != null}
+                      updatable={installedVer != null && compareVersions(it.version, installedVer) > 0}
+                      onInstall={onInstallSource}
+                    />
+                  )
+                })}
+              </div>
+              <div className="dl-market-status">
+                {marketLoading ? (
+                  <span className="dl-market-status-item">
+                    <Loader2Icon className="dl-spin" size={14} />
+                    {t(`${NS}.marketLoadingMore`)}
+                  </span>
+                ) : marketEnded ? (
+                  <span>{t(`${NS}.marketEnd`, { count: marketItems.length })}</span>
+                ) : null}
+              </div>
+              {!marketEnded && <div ref={sentinelRef} className="dl-market-sentinel" />}
+            </>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -336,19 +873,7 @@ export default function App() {
     return off
   }, [reloadPlugins])
 
-  // 最近打开 / 已安装应用（本地计算；排除操作台 / 设置内置页 / 无 UI 插件）
   const pluginMap = useMemo(() => new Map(plugins.map((p) => [p.id, p])), [plugins])
-  const recentApps = useMemo(
-    () => recent.map((id) => pluginMap.get(id)).filter((p): p is InstalledPluginInfo => !!p && hasUi(p)).slice(0, 3),
-    [recent, pluginMap],
-  )
-  const installedApps = useMemo(
-    () =>
-      plugins.filter(
-        (p) => hasUi(p) && !p.system && p.id !== CONSOLE && p.id !== SETTING && !recent.includes(p.id) && p.source !== 'dev',
-      ),
-    [plugins, recent],
-  )
 
   /** 依赖检查：id → 未安装的依赖插件 id 列表（存在缺失 = 未就绪） */
   const unready = useMemo(() => {
@@ -512,23 +1037,25 @@ export default function App() {
     [t, reloadPlugins, openRequest],
   )
 
-  /** 导入 .dlient 插件：选文件 → 解析并弹「权限确认」框 → 确认后安装 */
-  const handleImport = useCallback(async () => {
+  /**
+   * 导入 .dlient 插件（本地文件）：选文件（或拖入的路径）→ 解析并弹「安装确认」框 → 确认后安装。
+   * 返回 true 表示解析成功且确认框已弹出（调用方据此关闭来源弹框）。
+   */
+  const handleLocalImport = useCallback(async (filePath?: string): Promise<boolean> => {
     let res: Awaited<ReturnType<typeof window.dlient.hostShell.previewImportPlugin>>
     try {
-      res = await window.dlient.hostShell.previewImportPlugin()
+      res = await window.dlient.hostShell.previewImportPlugin(filePath)
     } catch (err) {
       MessagePlugin.error(String(t(`${NS}.importFailed`, { reason: err instanceof Error ? err.message : String(err) })))
-      return
+      return false
     }
-    if (!res) return // 取消文件选择
+    if (!res) return false // 取消文件选择
     if (!res.ok || !res.preview) {
       MessagePlugin.error(String(t(`${NS}.importFailed`, { reason: res.error ?? '' })))
-      return
+      return false
     }
     const preview = res.preview
-    void modal.confirm({
-      title: t(`${NS}.importReviewTitle`, { name: preview.name, version: preview.version }),
+    void modal.info({
       description: <ImportReviewBody preview={preview} />,
       width: 460,
       confirmBtn: t(`${NS}.importConfirm`),
@@ -539,7 +1066,72 @@ export default function App() {
         return ok
       },
     })
+    return true
   }, [t, runImportInstall])
+
+  /**
+   * 导入 .dlient 插件（npm / github / 网址）：预览拉包 → 弹「安装确认」框 → 确认后安装；取消清理临时文件。
+   * 返回 true 表示解析成功且确认框已弹出（调用方据此关闭来源弹框）。
+   */
+  const handleImportSource = useCallback(
+    async (source: string): Promise<boolean> => {
+      let res: Awaited<ReturnType<typeof window.dlient.hostShell.previewImportSource>>
+      try {
+        res = await window.dlient.hostShell.previewImportSource(source)
+      } catch (err) {
+        MessagePlugin.error(String(t(`${NS}.importFailed`, { reason: err instanceof Error ? err.message : String(err) })))
+        return false
+      }
+      if (!res.ok) {
+        MessagePlugin.error(String(t(`${NS}.importFailed`, { reason: res.error ?? '' })))
+        return false
+      }
+      const token = res.token
+      const preview = res.preview
+      void modal.info({
+        description: <ImportReviewBody preview={preview} />,
+        width: 460,
+        confirmBtn: t(`${NS}.importConfirm`),
+        cancelBtn: t(`${NS}.importCancel`),
+        onConfirm: async (ctx) => {
+          const r = await window.dlient.hostShell
+            .installImportSource(token)
+            .catch((err) => ({ ok: false as const, error: err instanceof Error ? err.message : String(err) }))
+          if (r.ok) {
+            MessagePlugin.success(String(t(`${NS}.importDone`, { name: r.name ?? r.id ?? '' })))
+            reloadPlugins()
+            if (r.id) void openRequest(r.id)
+            ctx.close()
+            return true
+          }
+          MessagePlugin.error(String(t(`${NS}.importFailed`, { reason: r.error ?? '' })))
+          return false
+        },
+        onCancel: () => {
+          void window.dlient.hostShell.discardImportSource(token).catch(() => undefined)
+        },
+        onClose: () => {
+          void window.dlient.hostShell.discardImportSource(token).catch(() => undefined)
+        },
+      })
+      return true
+    },
+    [t, reloadPlugins, openRequest],
+  )
+
+  /** 导入插件入口：来源对话框（本地文件 / 网址 / npm 包 / github 四种来源） */
+  const handleImport = useCallback(() => {
+    const dlg = modal.dialog({
+      header: (
+        <div className="dl-import-header">
+          <span className="dl-import-title">{t(`${NS}.importTitle`)}</span>
+          <span className="dl-import-sub">{t(`${NS}.importHeaderDesc`)}</span>
+        </div>
+      ),
+      width: 480,
+      body: <ImportSourceDialog onLocalPreview={handleLocalImport} onImportSource={handleImportSource} onDone={() => dlg.close()} />,
+    })
+  }, [t, handleLocalImport, handleImportSource])
 
   /** 监听宿主「plugin.install 用户确认」：弹授权框（复用导入确认弹框样式），结果回传主进程 */
   useEffect(() => {
@@ -786,7 +1378,13 @@ export default function App() {
         {/* 内容区：keep-alive（所有已打开页面常驻，display 控制显隐） */}
         <main className="dl-main">
           <div className="dl-page" style={{ display: active === CONSOLE ? 'block' : 'none' }}>
-            <ConsolePage recentApps={recentApps} installedApps={installedApps} opened={opened} unready={(id) => unready.has(id)} onOpen={openRequest} />
+            <ConsolePage
+              plugins={plugins}
+              recent={recent}
+              unready={(id) => unready.has(id)}
+              onOpen={openRequest}
+              onInstallSource={handleImportSource}
+            />
           </div>
           {opened.includes(SETTING) && (
             <div className="dl-page" style={{ display: active === SETTING ? 'block' : 'none' }}>

@@ -92,4 +92,4 @@ const port = await api.net.fetch('https://api.example.com/data', { method: 'GET'
 ## 3. 不开放（UI 端不可直连）
 
 - **system scope API**：`plugin.capabilities`、`permission.revoke`、`os.openExternal` 等 system scope 方法不向 UI 开放（开源宿主无 system 插件；调用即拒绝）；
-- 其余白名单之外 host-api（`child.*`、`app.createNative*`、`app.window.*`、`screen.*`、`webview.*`、`plugin.invoke` 等）：一律经 worker 用 `rpc.{module}.{method}` 调用（`app/src/main/export.ts` 的 `UI_OPEN_METHODS` 为唯一真源）。
+- 其余白名单之外 host-api（`child.*`、`app.createNative*`、`app.window.*`、`screen.*`、`plugin.invoke` 等）：一律经 worker 用 `rpc.{module}.{method}` 调用（`app/src/main/export.ts` 的 `UI_OPEN_METHODS` 为唯一真源）。注意：webview **已不再是 host-api** —— `window.dlient.webview.*` 是 preload 首方通道，仅供 `<Webview>` 组件内部使用。

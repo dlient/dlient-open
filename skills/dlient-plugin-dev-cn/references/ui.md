@@ -30,11 +30,14 @@ import { Button, Input, Card, Dialog, Tabs, Select, Badge, toast } from '@dlient
 | dlient 专属 | `PluginView` `PluginIcon` `PluginErrorBoundary` `Webview` `LogViewer` `modal`/`createDialog` `useDlientApi` `useDientStore` `useDientEvent` |
 
 - **旧 `theme` 兼容**：`<Button theme="primary">` 自动映射 shadcn `variant`；也可直接用 `variant="default" | "destructive" | "outline" | "secondary" | "ghost" | "link"`，`size="sm" | "lg" | "icon"`。
-- **图标用 lucide**，不要自绘 SVG：
+- **图标用 lucide**，不要自绘 SVG。**全量 lucide 图标均已 re-export**，任意图标直接具名引入即可，无需自己再依赖 lucide-react：
   ```tsx
   import { Icon } from '@dlient-open/ui'      // 兼容写法 <Icon name="code" size={48} />
   import { CodeIcon, SearchIcon, UploadIcon } from '@dlient-open/ui'   // 具名（lucide）
+  import { WandSparkles, Trash2Icon } from '@dlient-open/ui'           // 任意 lucide 图标
   ```
+  - 每个图标三种别名：`WandSparkles` / `WandSparklesIcon` / `LucideWandSparkles`；少数与 ui 组件同名的图标（`Table` `Sheet` `Sidebar` `Command` `Calendar` `Badge`）请用 `LucideXxx` 形态取（如 `LucideTable`）。
+  - `<Icon name="…">` 同样支持任意 lucide 名 —— kebab / Pascal / snake 均可（`wand-sparkles` / `WandSparkles` / `wand_sparkles`）；未命中则渲染空并打一条告警。
 - **插件图标**（启动器网格中的 manifest 图标）用专属 `PluginIcon`：
   ```tsx
   import { PluginIcon } from '@dlient-open/ui'
@@ -48,7 +51,7 @@ import { Button, Input, Card, Dialog, Tabs, Select, Badge, toast } from '@dlient
 
 ### 2.1 `Webview` —— 内嵌网页
 
-把远程页面以主进程 `WebContentsView` 层叠在宿主窗口之上（真正的浏览器视图，不是 iframe）。需在 `manifest.permissions` 声明 `webview.create`（`webContents` 调用另需 `webview.navigate`）。
+把远程页面以主进程 `WebContentsView` 层叠在宿主窗口之上（真正的浏览器视图，不是 iframe）。**无需声明任何 `manifest.permissions`** —— 组件经 `PluginView` 注入的「绑定本视图」客户端访问宿主；主进程只允许操作本视图创建的 webview，并保留自身的沙箱 + webPreferences / webContents 方法 / 事件白名单。
 
 ```tsx
 import { useRef } from 'react'
@@ -88,8 +91,8 @@ const [active, setActive] = useState('pageA')
 
 两种协同机制（都经主进程视图管理器）：
 
-- **组件级**：对常驻挂载的 `Webview` 传 `visible={activeTab === id}`，组件会同步到主进程（`webview.setVisible`）。容器 0×0（隐藏中）跳过 bounds 更新，避免恢复时页面重载。
-- **宿主级精确恢复（多视图 / tab 编排）**：从 `onViewReady` 记下 `viewId`；隐藏时调用宿主 hide-for-plugin，切回时把缓存的 view id 传回做**精确恢复**（`webview.showWebviewByPlugin` / `webview.hideWebviewByPlugin`，权限 `webview.create`）。
+- **组件级**：对常驻挂载的 `Webview` 传 `visible={activeTab === id}`，组件会同步可见性到宿主。容器 0×0（隐藏中）跳过 bounds 更新，避免恢复时页面重载。
+- **宿主级精确恢复（多视图 / tab 编排）**：从 `onViewReady` 记下 `viewId`；隐藏时调用 `useWebviewClient().hideMine()` 并缓存返回的 id，切回时 `showMine(cachedIds)` 做**精确恢复**（无需权限）。
 
 想保留页面状态就保持 `Webview` 挂载并切换 `visible`；只有想销毁视图时才卸载（卸载会自动 destroy）。
 

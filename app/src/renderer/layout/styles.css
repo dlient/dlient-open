@@ -174,24 +174,100 @@
 .dl-page { position: absolute; inset: 0; height: 100%; width: 100%; overflow-y: auto; }
 .dl-page-pad { padding: 32px; }
 
-/* ===== 操作台（console）===== */
-/* 操作台页头：左标题 + 右「导入插件」按钮（导入入口由活动栏 ＋ 迁到此处） */
-.dl-console-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 28px; }
+/* ===== 操作台（console）：吸顶页头 + 自定义 tab + 工具条 ===== */
+.dl-console { min-height: 100%; }
+/* 吸顶：页头 + tab 栏 + 工具条整体随滚动保持可见（背景与内容区同色） */
+.dl-console-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding: 24px 32px 0;
+  background: var(--dlient-color-bg-1);
+}
+/* 弹框（modal.dialog / modal.info 等）默认无 z-index：补上层级（--dlient-z-modal），
+   否则会被吸顶头（z-index:20）这类页面内定位元素盖住遮罩与卡片 */
+.dui-dialog-mask,
+.dui-dialog-wrap {
+  z-index: var(--dlient-z-modal);
+}
+/* 页头：左标题 + 右「导入插件」按钮 */
+.dl-console-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
 .dl-console-title-block { min-width: 0; }
 .dl-console-title { font-size: 24px; font-weight: 700; margin: 0; color: var(--dlient-text-color-primary); }
 .dl-console-sub { margin: 6px 0 0; font-size: 13px; color: var(--dlient-text-color-secondary); }
-.dl-section { margin-bottom: 28px; }
-.dl-section-head { margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; }
-.dl-section-title { font-size: 16px; font-weight: 600; margin: 0; color: var(--dlient-text-color-primary); }
-.dl-section-count { font-size: 12px; color: var(--dlient-text-color-placeholder); }
+/* tab 栏：左自定义 tab（下划线式）+ 右工具条（类型筛选/排序下拉 + 搜索框 + 搜索按钮） */
+.dl-console-tabbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; border-bottom: 1px solid var(--dlient-component-stroke-color); }
+.dl-console-tabs { display: flex; gap: 4px; }
+.dl-console-tab { appearance: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; padding: 8px 14px; background: transparent; font-size: 13px; color: var(--dlient-text-color-secondary); cursor: pointer; transition: color .15s; }
+.dl-console-tab:hover { color: var(--dlient-text-color-primary); }
+.dl-console-tab.active { color: var(--dlient-brand-color); border-bottom-color: var(--dlient-brand-color); font-weight: 600; }
+.dl-console-toolbar { display: flex; align-items: center; gap: 8px; padding-bottom: 6px; }
+/* 搜索框固定宽（比 Input 自带 w-full 更高优先级，避免被拉伸占满工具条） */
+.dl-console-toolbar .dl-console-search { width: 220px; flex: 0 0 220px; }
+/* 内容区 */
+.dl-console-body { padding: 20px 32px 32px; }
+.dl-console-panel { min-height: 200px; }
+.dl-console-error { margin: 24px 0; font-size: 13px; color: var(--dlient-error-color-6); }
+/* 市场：加载 / 状态 / 触底哨兵 */
+/* 分类筛选标签（胶囊；key 即 npm 检索关键词） */
+.dl-market-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.dl-market-tag {
+  appearance: none;
+  border: 1px solid var(--dlient-component-stroke-color);
+  border-radius: 999px;
+  padding: 4px 12px;
+  background: var(--dl-fill-0);
+  color: var(--dlient-text-color-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.dl-market-tag:hover { border-color: var(--dlient-brand-color); color: var(--dlient-brand-color); }
+.dl-market-tag.active { border-color: var(--dlient-brand-color); background: var(--dlient-brand-color-1); color: var(--dlient-brand-color); font-weight: 600; }
+.dl-market-loading { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 48px 0; font-size: 13px; color: var(--dlient-text-color-secondary); }
+.dl-market-status { display: flex; align-items: center; justify-content: center; padding: 18px 0 4px; font-size: 12px; color: var(--dlient-text-color-placeholder); }
+.dl-market-status-item { display: inline-flex; align-items: center; gap: 6px; }
+.dl-market-sentinel { height: 1px; }
+.dl-market-sub { margin-top: 8px; font-size: 11px; color: var(--dlient-text-color-2); font-family: "JetBrains Mono", ui-monospace, monospace; word-break: break-all; }
+@keyframes dl-spin { to { transform: rotate(360deg); } }
+.dl-spin { animation: dl-spin 1s linear infinite; }
 .dl-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
 
-/* 导入「权限确认」弹框正文（modal description 区内渲染） */
+/* 导入「安装确认」弹框正文（modal description 区内渲染） */
 .dl-import-review { text-align: left; }
 .dl-import-review-meta { margin: 0 0 6px; font-weight: 600; color: var(--dlient-text-color-primary); word-break: break-all; }
 .dl-import-review-desc { margin: 0 0 10px; font-size: 13px; line-height: 1.6; color: var(--dlient-text-color-secondary); max-height: 88px; overflow-y: auto; word-break: break-word; }
+/* 插件名称 / 说明两行居中（仅导入确认弹框；dl-import-review-desc 亦被 plugin.install 确认框复用，故按父级限定） */
+.dl-import-review > .dl-import-review-meta,
+.dl-import-review > .dl-import-review-desc { text-align: center; }
+/* 来源展示行（npm / github / 网址 导入） */
+.dl-import-review-src { margin: 0 0 8px; font-size: 13px; line-height: 1.6; color: var(--dlient-text-color-secondary); word-break: break-all; }
+.dl-import-review-src code { margin-left: 6px; font-size: 12px; color: var(--dlient-brand-color); word-break: break-all; }
 .dl-import-review-head { margin: 4px 0 6px; font-size: 13px; font-weight: 600; color: var(--dlient-text-color-primary); }
 .dl-import-review-empty { margin: 0; font-size: 13px; color: var(--dlient-text-color-secondary); }
+/* 导入来源对话框（本地文件 / 网址 / npm 包 / github） */
+.dl-import-header { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dl-import-title { font-size: 15px; font-weight: 600; line-height: 1.4; color: var(--dlient-text-color-primary); }
+.dl-import-sub { font-size: 12px; line-height: 1.4; color: var(--dlient-text-color-secondary); }
+/* 内容区：20px 内边距（dialog 弹框内容区默认零 padding） */
+.dl-import-source { display: flex; flex-direction: column; padding: 20px; }
+/* 上排：4 个来源选框（图标 + 文字） */
+.dl-import-kinds { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.dl-import-kind { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; height: 62px; padding: 0 4px; border: 1px solid var(--dlient-component-stroke-color); border-radius: 6px; background: transparent; color: var(--dlient-text-color-secondary); font-size: 12px; cursor: pointer; transition: background .15s, border-color .15s, color .15s; }
+.dl-import-kind:hover { background: var(--dl-fill-0); color: var(--dlient-text-color-primary); }
+.dl-import-kind.active { border-color: var(--dlient-brand-color); background: var(--dl-fill-0); color: var(--dlient-brand-color); font-weight: 600; }
+/* 下排：说明 + 输入框 / 文件框 */
+.dl-import-body { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+.dl-import-hint { margin: 0; font-size: 13px; line-height: 1.6; color: var(--dlient-text-color-secondary); }
+/* 文件框：约 100px 高、虚线边框、浅色底（可点击选择、可拖入） */
+.dl-import-dropzone { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 100px; border: 1px dashed var(--dlient-component-stroke-color); border-radius: 6px; background: var(--dl-fill-0); color: var(--dlient-text-color-secondary); font-size: 13px; cursor: pointer; transition: border-color .15s, color .15s; }
+.dl-import-dropzone:hover,
+.dl-import-dropzone.hover { border-color: var(--dlient-brand-color); color: var(--dlient-brand-color); }
+/* 底部：全宽提交按钮（比默认尺寸大一档） */
+.dl-import-submit { width: 100%; margin-top: 16px; }
+/* 解析中（按钮 loading）：来源选框 / 文件框置灰且不可再次触发 */
+.dl-import-kind:disabled,
+.dl-import-dropzone:disabled { opacity: .6; cursor: default; }
 .dl-import-perms { list-style: none; margin: 0; padding: 0; text-align: left; max-height: 220px; overflow-y: auto; border: 1px solid var(--dlient-component-stroke-color); border-radius: 6px; }
 .dl-import-perm { display: flex; flex-direction: column; gap: 3px; padding: 7px 10px; font-size: 13px; line-height: 1.5; text-align: left; }
 .dl-import-perm + .dl-import-perm { border-top: 1px solid var(--dlient-component-stroke-color); }
@@ -213,6 +289,8 @@
 .dl-import-tab.active { color: var(--dlient-brand-color); border-bottom-color: var(--dlient-brand-color); font-weight: 600; }
 
 /* 依赖列表（与权限同布局：两行一条；npm/github 行可点击） */
+/* 依赖 tab 内容区：固定最低高度，避免空/少依赖时弹框高度抖动 */
+.dl-import-deps-panel { min-height: 100px; }
 .dl-import-deps { list-style: none; margin: 0; padding: 0; text-align: left; max-height: 220px; overflow-y: auto; border: 1px solid var(--dlient-component-stroke-color); border-radius: 6px; }
 .dl-import-dep { display: flex; flex-direction: column; gap: 3px; padding: 7px 10px; font-size: 13px; line-height: 1.5; text-align: left; }
 .dl-import-dep + .dl-import-dep { border-top: 1px solid var(--dlient-component-stroke-color); }
@@ -228,6 +306,9 @@
 .dl-card { border: 1px solid var(--dlient-component-stroke-color); border-radius: 8px; background: var(--dl-fill-0); padding: 16px; }
 .dl-card-click { cursor: pointer; transition: border-color .15s, box-shadow .15s; }
 .dl-card-click:hover { border-color: var(--dlient-brand-color);  background: var(--dl-fill-1);}
+/* 插件（非应用）：不可打开，弱化交互感 */
+.dl-card--plugin { cursor: default; }
+.dl-card--plugin:hover { border-color: var(--dlient-component-stroke-color); background: var(--dl-fill-0); }
 .dl-card-head { display: flex; align-items: center; gap: 10px; }
 .dl-card-meta { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
 .dl-card-icon {
@@ -247,6 +328,24 @@
 .dl-card-name { font-size: 14px; font-weight: 600; color: var(--dlient-text-color-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dl-card-name-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .dl-card-version { font-size: 11px; color: var(--dlient-text-color-placeholder); font-family: "JetBrains Mono", ui-monospace, monospace; }
+/* 类型徽标（应用 / 插件）：版本号右侧小标签 */
+.dl-card-kind {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+  vertical-align: 1px;
+}
+.dl-card-kind--app { background: var(--dlient-brand-color-1); color: var(--dlient-brand-color); }
+.dl-card-kind--plugin { background: var(--dl-fill-1); color: var(--dlient-text-color-secondary); }
+/* 市场卡片徽标行：版本(default) + 类型(success/warning) */
+.dl-card-badges { display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; }
 .dl-unready-badge {
   flex-shrink: 0;
   display: flex;
@@ -269,6 +368,8 @@
   height: 40px;
   line-height: 20px;
  }
+/* 卡片底部操作区（市场卡：导入 / 已安装按钮） */
+.dl-card-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 
 /* 空状态（@dlient/ui Empty 外层容器） */
 .dl-empty-wrap { display: flex; height: 100%; align-items: center; justify-content: center; padding: 48px 32px; }

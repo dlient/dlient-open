@@ -1,44 +1,31 @@
 # dsh（DeepSeek Harness）
 
-## 1. 插件介绍
+## 1. 这是什么
 
-dsh 在 dlient 中运行 **DeepSeek Harness（dsh）** 的 AI Agent Web UI（`type: 'app'`）。
+dsh 是一个在宿主中运行 **DeepSeek Harness（dsh）** AI 助手的插件。DeepSeek Harness 是一个 AI 智能体工作台，可以帮你完成日常的开发、写作等任务。
 
-- **worker**：解析 / 安装 Node.js（内置 `nodejs.*` host-api，优先内置 LTS）→ `npm install -g @deepseek-ai/dsh` → 启动 `dsh web --no-open`（默认 `http://127.0.0.1:3080`），探测端口就绪后把 URL 交给渲染端。
-- **渲染端**：用 `@dlient-open/ui` 的 `Webview` 组件内嵌 DSH 网页（组件经本 worker 内建 `webview:*` 转发到主进程 WebContentsView）。
+它主要提供以下功能：
 
-```
-DSH（app）─ worker：Node.js → npm i -g @deepseek-ai/dsh → dsh web --no-open
-DSH（渲染端）─ <Webview src=http://127.0.0.1:3080>
-```
+- **完整的 AI 助手界面**：配置模型、管理工作区、和 AI 进行对话。
+- **免安装使用**：运行所需的软件会自动安装与配置，无需你提前准备。
+- **聊天界面可嵌入其他插件**：提供一个简洁的聊天界面，其他插件（如 Dev Tools 的「AI」面板）可以直接调用 dsh 的 AI 能力。
+- **跟随宿主外观**：自动使用宿主当前的语言和主题，无需单独设置。
 
-## 2. 导出的方法
+## 2. 使用方法
 
-| 方法 | 说明 |
-|------|------|
-| `dsh.start` | 确保 Node.js 与 DSH 就绪，启动 `dsh web` 服务并返回 URL |
-| `dsh.stop` | 停止正在运行的 `dsh web` 服务（并清理 PID 文件 / 端口） |
-| `dsh.status` | 查询服务状态（运行中 / URL） |
+1. 打开 dsh 应用；如果其他插件中使用了它的聊天界面，直接打开那个面板即可。
+2. 首次使用会自动安装所需环境，可能耗时几分钟，请耐心等待。
+3. 进入界面后，在「设置」中填写你的 AI 服务 API Key，然后选择一个工作区，即可开始使用。
 
-关键方法调用示例：
+## 3. 需要的权限
 
-```ts
-const { url } = await rpc.plugin.invoke('dsh', 'dsh.start')
-const status = await rpc.plugin.invoke('dsh', 'dsh.status')
-await rpc.plugin.invoke('dsh', 'dsh.stop')
-```
+- **运行软件**：需要启动 Node.js / npm 来安装和运行 dsh（由宿主自动解析运行环境，无需手动设置）。
+- **文件读写**：需要在宿主的数据目录中安装运行所需的文件；首次使用时可能会弹窗确认访问权限。
+- **访问本地端口**：dsh 界面通过本地端口提供，插件需要访问本地网络来显示界面。
+- **保存配置**：会读写 dsh 的配置文件（如界面语言与主题设置），以保证与宿主保持一致。
 
-## 3. skills 说明
+## 4. 依赖
 
-本插件提供 AI Agent 技能，见 [skills/SKILL.md](skills/SKILL.md)：帮助代理启动 / 停止 DeepSeek Harness 服务并获取访问地址。
-
-## 使用
-
-1. 无需安装任何运行时插件：内置 `nodejs.*` host-api 会自动解析 Node.js（无则下载内置 LTS）。
-2. 在 dlient 中打开 dsh 应用：首次会解析 Node.js（无则自动下载安装），随后安装 DSH 并启动服务。
-3. 进入 DSH 界面后：Settings → Models 配置 API Key，再选择 Workspace 即可开始使用。
-
-## 依赖
-
-- 内置 host-api `nodejs.*`（开源版宿主在主进程内置运行时管理，**不再有 nodejs 插件**）：worker 调用 `rpc.nodejs.resolveRuntime()` / `rpc.nodejs.install()`（manifest 需声明 `nodejs.resolveRuntime` / `nodejs.install` 权限）；`dlient.dependencies.nodejs` 保留宿主对运行时的就绪门控。
-- 宿主 UI 库 `@dlient-open/ui`：`Webview` 组件（manifest 需声明 `webview.create` / `webview.navigate` 权限）
+- **宿主提供的运行环境**：运行 dsh 需要 Node.js，由宿主自动准备，无需你单独安装。
+- **供其他插件使用**：它的「聊天」功能可被其他插件内嵌（例如 Dev Tools 的「AI」面板）。
+- **与命令行版共享配置（可选）**：如果本机已通过命令行安装过 dsh，两者会共享同一份配置。

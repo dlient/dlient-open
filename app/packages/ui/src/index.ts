@@ -82,11 +82,36 @@ export { Tag, Space, Divider, Loading, Steps, Popup, type TagProps, type TagThem
 // ============ 图标（lucide 实现；Icon name 与 tdesign 风格具名图标均兼容）============
 export { Icon, type IconProps, SearchIcon, UploadIcon, CodeIcon, RefreshIcon, CloseIcon, LoadingIcon, TimeIcon, CheckCircleFilledIcon, CloseCircleFilledIcon, DeleteIcon, DownloadIcon, AddIcon, FolderOpenIcon, AppIcon } from './components/icon'
 
+// ============ 全量图标（lucide-react 全量具名导出）============
+// 插件可直接 `import { SearchIcon, Settings, LucideTable } from '@dlient-open/ui'`：
+// 插件产物把 @dlient-open/ui external，运行时取宿主 SystemJS 单例 → 图标只随宿主打包一次，
+// 插件体积不受影响（插件无需各自依赖 lucide-react）。
+// 三种命名都在：`Search` / `SearchIcon` / `LucideSearch`。
+// ⚠️ 下列 6 个名字同时被 ui 组件占用（Badge / Calendar / Command / Sheet / Sidebar / Table），
+// 必须显式再导出，否则 star 与 star 同名会让该名字成为「歧义导出」而整体失效；
+// 被遮蔽的同名图标仍可用 `LucideXxx` 取到（如 `LucideTable`）。
+export * from 'lucide-react'
+export { Badge } from './components/ui/badge'
+export { Calendar } from './components/ui/calendar'
+export { Command } from './components/ui/command'
+export { Sheet } from './components/ui/sheet'
+export { Sidebar } from './components/ui/sidebar'
+export { Table } from './components/ui/table'
+
 // ============ dlient 专属 ============
 export { PluginView, type PluginViewProps } from './components/plugin-view'
 export { PluginIcon, type PluginIconProps } from './components/plugin-icon'
 export { PluginErrorBoundary, type PluginErrorBoundaryProps } from './components/plugin-error-boundary'
 export { Webview, type WebviewProps, type WebviewHandle } from './components/webview'
+// 绑定当前视图的 webview 客户端（PluginView 注入；插件侧用 useWebviewClient() 做 hideMine/showMine 等编排）
+export {
+  useWebviewClient,
+  WebviewClientContext,
+  createWebviewClient,
+  type WebviewClient,
+  type WebviewCallResult,
+  type WebviewBounds,
+} from './components/webview-client'
 export { LogViewer, type LogViewerProps } from './components/log-viewer'
 // 函数式反馈弹框 + 吸顶通用弹框
 export { modal, createDialog, type DialogOptions as DuiDialogOptions, type DialogContext, type DuiDialogInstance, type DuiModalInstance, type ModalConfirmTheme } from './components/modal'

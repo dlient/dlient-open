@@ -1,4 +1,5 @@
 export * from './types'
+export * from './cmd-alias'
 export * from './protocol'
 export * from './worker'
 export * from './host-api'

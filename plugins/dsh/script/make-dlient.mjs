@@ -102,7 +102,13 @@ try {
     filter: (src) => !src.split(sep).includes('node_modules'),
   })
   for (const sub of ['assets', 'skills']) {
-    if (existsSync(join(ROOT, sub))) cpSync(join(ROOT, sub), join(stage, sub), { recursive: true })
+    if (!existsSync(join(ROOT, sub))) continue
+    // dsh-chat-ui 资产已在构建期内联进 dist/worker.js（esbuild 虚拟模块 'dlient:chat-assets'），
+    // 包内不再重复打一份（仓库仍保留该目录作为构建源）
+    cpSync(join(ROOT, sub), join(stage, sub), {
+      recursive: true,
+      filter: (src) => !src.split(sep).includes('dsh-chat-ui'),
+    })
   }
 
   // ---- 递归收集 stage 文件 ----
@@ -118,6 +124,13 @@ try {
   walk(stage, '')
 
   const out = join(ROOT, name)
+  // 清理同目录下的历史 .dlient（只保留本次产物）：npm 包用 "*.dlient" 通配发布时，
+  // 旧版本产物会被一并打进包里（体积暴涨且宿主可能装到旧包），故出包即清理
+  for (const ent of readdirSync(ROOT)) {
+    if (ent !== name && ent.startsWith(`${id}-`) && ent.endsWith('.dlient')) {
+      rmSync(join(ROOT, ent), { force: true })
+    }
+  }
   writeFileSync(out, makeZip(files))
   console.log(`[make-dlient] 完成 → ${out}`)
   console.log(`[make-dlient] 共 ${files.length} 个文件，.dlient 大小 ${(statSync(out).size / 1024).toFixed(1)} KB（无需签名，可直接导入开源版）`)

@@ -21,6 +21,7 @@ import { Spinner } from './ui/spinner'
 import { Empty } from './ui/empty'
 import { Alert, AlertTitle, AlertDescription } from './ui/alert'
 import { pluginScopeId, ensurePluginPortalContainer } from '../lib/plugin-portal'
+import { WebviewClientContext, createWebviewClient, type WebviewClient } from './webview-client'
 import { modal as uiModal, type ModalOptions, type DialogOptions } from './modal'
 // SystemJS：插件 UI 模块加载器（插件产物为 System.register 格式，external 的共享依赖
 // 从 SystemJS registry 解析到宿主单实例，见 ensureSystemShared）。
@@ -106,11 +107,17 @@ async function loadPluginRemote(
 ): Promise<Record<string, unknown>> {
   ensureSystemShared()
   const base = remoteEntryUrl ?? `dlientOpen://plugin/${pluginId}/dist/remoteEntry.js`
-  const url = cacheBust ? `${base}?t=${cacheBust}` : base
+  const withParam = (url: string, key: string, value: string | number) =>
+    `${url}${url.includes('?') ? '&' : '?'}${key}=${value}`
+  const stableUrl = cacheBust ? withParam(base, 't', cacheBust) : base
   const MAX_ATTEMPTS = 3
   let lastErr: unknown
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 300 * attempt))
+    // 第 1 次用稳定 URL（同 URL 复用已加载模块）；失败重试必须换 URL：SystemJS 按 URL 缓存加载结果，
+    // 失败的加载同样留在 registry（System.delete 对 Errored load 直接返回 false），重复 import 同一 URL
+    // 只会拿到同一份失败结果 → 症状：dev 源码修好后刷新仍是错误页，必须重启宿主才恢复。
+    const url = attempt === 0 ? stableUrl : withParam(stableUrl, 'r', `${attempt}-${Date.now()}`)
     try {
       return (await withTimeout(
         SystemJS.import(url) as Promise<Record<string, unknown>>,
@@ -250,6 +257,8 @@ export function PluginView({
   const [notInstalled, setNotInstalled] = React.useState(false)
   const [reloadTick, setReloadTick] = React.useState(0)
   const apiRef = React.useRef<PluginApi | null>(null)
+  /** 绑定本视图的 webview 客户端（含签名闭包，故与 apiRef 一样走 ref，不参与渲染比较） */
+  const webviewClientRef = React.useRef<WebviewClient | null>(null)
 
   // dev 插件热重载：监听主进程产物变更广播（pluginId 匹配 + UI 变更 → cache-bust 重载）。
   React.useEffect(() => {
@@ -304,6 +313,8 @@ export function PluginView({
     orgPromise.then((organization) => {
       if (cancelled) return
       const hostProxy = createHostApiProxy((method, args) => hostApiCall(method, args))
+      // 绑定本视图的 webview 客户端：直连 preload → 主进程（不经插件 worker，也不依赖 manifest 权限）
+      webviewClientRef.current = createWebviewClient({ viewId, pluginId, sign })
       apiRef.current = {
         // api.xxx.xxx：UI 端直连 host-api 开放子集（fs/net/dialog/app/...，child.* 等不开放）
         ...hostProxy,
@@ -426,6 +437,10 @@ export function PluginView({
     })
 
     async function load() {
+      if (cancelled) return
+      // 重载（reloadTick / 参数变化）前先清掉上一次的错误：只在 catch 里 setError 会让
+      // 「dev 源码修好 → 重载成功」仍停留在错误页，必须重启宿主才恢复。
+      setError(null)
       try {
         // 加载前判定插件是否已安装：未安装给出明确提示（而非 dlientOpen:// 协议 404 报错）。
         // dev 实例（'<id>@dev'）豁免：dev 插件不进已安装清单（F2：只在 dev runtime 打开），
@@ -505,7 +520,11 @@ export function PluginView({
           且 api 对象含 sign_key 闭包，不宜进入 state 参与比较。 */}
       {/* eslint-disable-next-line react-hooks/refs */}
       <PluginApiContext.Provider value={apiRef.current}>
-        <Inner {...(componentProps ?? {})} />
+        {/* webview 客户端同样绑定本视图（ref 与 apiRef 在同一处赋值，能渲染到 Inner 时必已就绪） */}
+        {/* eslint-disable-next-line react-hooks/refs */}
+        <WebviewClientContext.Provider value={webviewClientRef.current}>
+          <Inner {...(componentProps ?? {})} />
+        </WebviewClientContext.Provider>
       </PluginApiContext.Provider>
     </div>
   )

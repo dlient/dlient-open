@@ -815,7 +815,7 @@
   --dlient-z-popup: 500;
   --dlient-z-tooltip: 600;
   --dlient-z-drawer: 700;
-  --dlient-z-modal: 800;
+  --dlient-z-modal: 9999;
   --dlient-z-notification: 850;
   --dlient-z-toast: 900;
   --dlient-z-loading: 950;

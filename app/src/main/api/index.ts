@@ -19,7 +19,6 @@ import { fsApis } from './fs'
 import { pluginApis } from './plugin'
 import { permissionApis } from './permission'
 import { childApis } from './child'
-import { webviewApis } from './webview'
 import { logApis } from './log'
 import { nodejsApis } from './nodejs'
 
@@ -39,7 +38,6 @@ const rawApis: ApiDefinition[] = [
   ...pluginApis,
   ...permissionApis,
   ...childApis,
-  ...webviewApis,
   ...logApis,
   ...nodejsApis,
 ]

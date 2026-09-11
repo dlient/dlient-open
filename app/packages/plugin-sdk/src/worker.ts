@@ -242,8 +242,9 @@ export function createWorkerRpc(pluginId: string): WorkerRpc {
 
   // 通道解析：池上下文（pool-worker 注入）优先，其次 process.parentPort（独立进程）
   const poolCtx = (globalThis as unknown as Record<string, unknown>)[POOL_CTX_KEY] as PoolContext | undefined
-  const ctl: RpcChannel | undefined =
-    poolCtx?.controlPort ?? (typeof process !== 'undefined' ? (process.parentPort as RpcChannel | undefined) : undefined)
+  // process.parentPort 为 Electron utilityProcess 专有属性（Node 的 Process 类型未声明）→ 断言读取
+  const procParentPort = (process as unknown as { parentPort?: RpcChannel }).parentPort
+  const ctl: RpcChannel | undefined = poolCtx?.controlPort ?? (typeof process !== 'undefined' ? procParentPort : undefined)
 
   // 运行标识：优先宿主下发的 instanceKey（池模式经 poolCtx 同步注入；独立进程模式 init 后更新）。
   // dev 实例 = '<id>@dev'，与正式实例 '<id>' 隔离 —— rpc 表键 / 推送 / host-api owner 均按此区分。
@@ -383,7 +384,12 @@ export function createWorkerRpc(pluginId: string): WorkerRpc {
       .then(() => handler(msg.args, ctx))
       .then((result) => {
         if (ac.signal.aborted) return
-        const data = (result as { data?: ArrayBuffer } | null | undefined)?.data
+        // 二进制转发约定：handler 返回 { data: ArrayBuffer, result } 时，data 随消息转发、result 进信封。
+        // 仅当 data 真的是 ArrayBuffer 才走 result 分支 —— 否则会把普通信封（含 data 字段的
+        // { code, data, from }，如 rpc.success(x) / rpc.error(code, msg) 的返回值）误判为二进制包装，
+        // 取 result.result 得 undefined，导致 data 丢失（成功变空数据、失败码被吞成成功）。
+        const forwarded = (result as { data?: unknown } | null | undefined)?.data
+        const data = forwarded instanceof ArrayBuffer ? forwarded : undefined
         const raw = data !== undefined ? (result as { result?: unknown }).result : result
         // 信封归一（契约点 1）：handler 已返回信封则原样透传，否则包成 { code: 0, data, from }
         const value = isEnvelope(raw) ? raw : toSuccessEnvelope(raw)
@@ -629,23 +635,9 @@ export function createWorkerRpc(pluginId: string): WorkerRpc {
     })
   }
 
-  // ---- 内建 webview 能力转发（Webview 组件经「承载插件」worker 调用 hostApi）----
-  // 任何插件的 worker 都自动带这些 handler：前端 <Webview>（@dlient-open/ui）用 useDlientApi 请求
-  // 自己插件的 webview:* → 这里转发到主进程 webview-manager。hostApi 侧按 manifest.permissions
-  //（webview.create / webview.navigate）鉴权，未声明权限的插件调用会被主进程拒绝。
-  // 插件可用 registerHandler 显式注册同名方法覆盖内建实现（显式优先）。
-  handlers.set('webview:create', ([opts]) => callHostApiImpl('webview.create', [opts]))
-  handlers.set('webview:update', ([opts]) => callHostApiImpl('webview.update', [opts]))
-  handlers.set('webview:destroy', ([viewId]) => callHostApiImpl('webview.destroy', [String(viewId ?? '')]))
-  handlers.set('webview:setVisible', ([opts]) => callHostApiImpl('webview.setVisible', [opts]))
-  handlers.set('webview:webContents:call', ([opts]) => callHostApiImpl('webview.webContentsCall', [opts]))
-  // 主进程 webview-manager 按 owner 插件转发 webContents 白名单事件 → 推送承载插件前端组件
-  handlers.set('onWebContentsEvent', ([payload]) => {
-    const { viewId, name, args } = (payload ?? {}) as { viewId?: string; name?: string; args?: unknown[] }
-    if (!viewId || !name) return
-    const msg: PushMessage = { type: 'push', pluginId: activePluginId, event: 'webview:event', data: { viewId, name, args } }
-    sendMessage(msg)
-  })
+  // webview 能力不再经 worker 转发：<Webview>（@dlient-open/ui）由 PluginView 注入「绑定本视图」的
+  // 客户端，经 window.dlient.webview.* 直连 preload → 主进程 webview-manager（webview-ipc.ts）。
+  // webContents 事件同理由主进程按创建者视图推送 'webview:event'，不再经 onWebContentsEvent 中转。
 
   // rpc.xx.xx 宿主能力模块树：叶子函数 = callHostApiImpl（child 由下方 SDK 特型实现，不入树）
   const hostModules = createHostApiModules((method, args) => callHostApiImpl(method, args))

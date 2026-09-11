@@ -118,6 +118,13 @@ try {
   walk(stage, '')
 
   const out = join(ROOT, name)
+  // 清理同目录下的历史 .dlient（只保留本次产物）：npm 包用 "*.dlient" 通配发布时，
+  // 旧版本产物会被一并打进包里（体积暴涨且宿主可能装到旧包），故出包即清理
+  for (const ent of readdirSync(ROOT)) {
+    if (ent !== name && ent.startsWith(`${id}-`) && ent.endsWith('.dlient')) {
+      rmSync(join(ROOT, ent), { force: true })
+    }
+  }
   writeFileSync(out, makeZip(files))
   console.log(`[make-dlient] 完成 → ${out}`)
   console.log(`[make-dlient] 共 ${files.length} 个文件，.dlient 大小 ${(statSync(out).size / 1024).toFixed(1)} KB（无需签名，可直接导入开源版）`)

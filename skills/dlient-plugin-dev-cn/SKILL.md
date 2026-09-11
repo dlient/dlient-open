@@ -22,7 +22,7 @@ dlient 是基于 Electron 的桌面宿主，可加载第三方插件。插件由
 
 ## 2. 适用场景
 
-- **本地分发插件**：把插件打成 **`.dlient`** 包共享 / 导入。开源版宿主**无插件市场、无服务端、无线上发布**——分发与安装只走本地。
+- **分发插件**：发布到 **npm** —— 宿主操作台内置 **NPM 市场** tab，按 `keywords:dlient-open-plugin` 检索并支持安装 / 更新；或打成 **`.dlient`** 包本地共享 / 导入。
 
 - 开发与迭代**仓库 dev 源码目录**里的插件（`dlient-open/plugins/<id>`，`source: 'dev'`），或**本地导入**（`source: 'local'`，装入宿主 `plugins/` 目录）。
 
@@ -109,7 +109,7 @@ const p = await rpc.app.getPath('userData')           // 无需权限
 
 - **app.\*** — data（隔离存储）、window、menu、shortcut、crypt、notify、getPath 等；
 
-- **webview.\*** — create / update / destroy / setVisible / showWebviewByPlugin / hideWebviewByPlugin / webContentsCall（worker 通道）；
+- **webview** — 不再是 host-api：渲染 **`@dlient-open/ui`** 的 **`Webview`** 组件即可（由 `PluginView` 注入绑定本视图的客户端，**无需权限声明**）；`useWebviewClient()` 提供 `hideMine()` / `showMine(ids)` 做 tab 编排；
 
 - **clipboard / os / notification / log / permission** — 薄封装；
 
@@ -157,4 +157,5 @@ const p = await rpc.app.getPath('userData')           // 无需权限
 | `references/worker.md`             | Worker 编写：SDK API、RPC、日志、子进程句柄、跨插件调用               |
 | `references/ui.md`                 | UI 编写：`@dlient-open/ui` 共享组件、hooks、i18n、主题          |
 | `references/dev-standards.md`      | Worker + UI 开发规范                                   |
+| `references/npm-market.md`         | NPM 市场：检索规则、分类标签关键词、发布插件包的 keywords 要求 |
 

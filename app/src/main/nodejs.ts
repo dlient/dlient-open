@@ -11,7 +11,7 @@ import { execFile } from 'node:child_process'
 import { createWriteStream, existsSync } from 'node:fs'
 import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { app } from 'electron'
-import { dirname, join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import { inflateRaw } from 'node:zlib'
 
@@ -102,23 +102,77 @@ export async function checkLocal(opts?: { version?: string }): Promise<{
   if (pathRes.ok) {
     return { hasNode: true, version: pathRes.out, path: 'node', satisfies: satisfiesNode(pathRes.out, opts?.version) }
   }
-  const candidates =
-    process.platform === 'win32'
-      ? [
-          'C:\\Program Files\\nodejs\\node.exe',
-          join(process.env.APPDATA ?? '', 'nvm', 'node.exe'),
-          join(process.env.PROGRAMFILES ?? '', 'nodejs', 'node.exe'),
-        ]
-      : process.platform === 'darwin'
-        ? ['/opt/homebrew/bin/node', '/usr/local/bin/node', '/usr/bin/node']
-        : ['/usr/bin/node', '/usr/local/bin/node']
-  for (const p of candidates) {
+  for (const p of nodePathCandidates()) {
     if (p && existsSync(p)) {
       const res = await runVersion(p, ['--version'])
       if (res.ok) return { hasNode: true, version: res.out, path: p, satisfies: satisfiesNode(res.out, opts?.version) }
     }
   }
   return { hasNode: false }
+}
+
+/** 常见 node 安装路径（PATH 未命中时的兜底候选；checkLocal 与命令别名解析共用） */
+export function nodePathCandidates(): string[] {
+  return process.platform === 'win32'
+    ? [
+        'C:\\Program Files\\nodejs\\node.exe',
+        join(process.env.APPDATA ?? '', 'nvm', 'node.exe'),
+        join(process.env.PROGRAMFILES ?? '', 'nodejs', 'node.exe'),
+      ]
+    : process.platform === 'darwin'
+      ? ['/opt/homebrew/bin/node', '/usr/local/bin/node', '/usr/bin/node']
+      : ['/usr/bin/node', '/usr/local/bin/node']
+}
+
+/**
+ * PATH 中按名字查找可执行文件（纯 fs 检查，不启动进程）。
+ * Windows 按 PATHEXT 顺序补扩展名（`.EXE` 先于 `.CMD`，故优先命中真实可执行文件）；
+ * 路径分隔符取 `delimiter`，环境变量名大小写不敏感（Windows 上 PATH 可能是 `Path`）。
+ */
+export function whichSync(names: string[]): string | null {
+  const pathKey = Object.keys(process.env).find((k) => k.toLowerCase() === 'path')
+  const raw = pathKey ? process.env[pathKey] : undefined
+  const dirs = String(raw ?? '')
+    .split(delimiter)
+    .filter(Boolean)
+  const exts = process.platform === 'win32' ? String(process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean) : ['']
+  for (const dir of dirs) {
+    for (const name of names) {
+      for (const ext of exts) {
+        const p = join(dir, name + ext)
+        if (existsSync(p)) return p
+      }
+    }
+  }
+  return null
+}
+
+/** 内置 node 可执行文件定位（不校验存在性） */
+export function bundledNodeExe(): string {
+  return bundledExe()
+}
+
+/** node 可执行文件绝对路径定位：内置优先 → PATH → 常见安装路径（纯 fs 检查，不启动进程） */
+export function locateNodeExe(): { cmd: string; source: 'bundled' | 'path' } | null {
+  const bundled = bundledExe()
+  if (existsSync(bundled)) return { cmd: bundled, source: 'bundled' }
+  const hit = whichSync(['node'])
+  if (hit) return { cmd: hit, source: 'path' }
+  for (const p of nodePathCandidates()) {
+    if (p && existsSync(p)) return { cmd: p, source: 'path' }
+  }
+  return null
+}
+
+/** node 发行包自带的 npm / npx cli 脚本绝对路径（Windows 与 POSIX 布局不同）；不存在返回 null */
+export function npmCliPathFor(nodeExe: string, cli: 'npm-cli.js' | 'npx-cli.js'): string | null {
+  const dir = dirname(nodeExe)
+  const candidates = [
+    join(dir, 'node_modules', 'npm', 'bin', cli), // Windows 官方包 / 宿主内置运行时
+    join(dir, '..', 'lib', 'node_modules', 'npm', 'bin', cli), // POSIX（/usr/local/bin → /usr/local/lib/...）
+  ]
+  for (const p of candidates) if (existsSync(p)) return p
+  return null
 }
 
 /** 内置 node 检测（<userData>/plugin-data/nodejs） */
@@ -138,6 +192,9 @@ export async function checkBundled(opts?: { version?: string }): Promise<{
 /**
  * 解析可用 node 运行环境（内置优先，其次 PATH；声明版本要求时按是否满足过滤）。
  * source: 'bundled' | 'path' | 'none'
+ *
+ * `node` 一律返回**绝对可执行文件路径**（PATH 命中时也经 whichSync 绝对化）——调用方据此推导
+ * npm 全局目录 / PATH 前置等；需要跨「换机器 / 换版本」稳定的命令标识时用命令别名（CMD_NODE 等）。
  */
 export async function resolveRuntime(opts?: { version?: string }): Promise<{
   node?: string
@@ -158,8 +215,11 @@ export async function resolveRuntime(opts?: { version?: string }): Promise<{
     }
   }
   const local = await checkLocal({ version: req })
-  if (local.hasNode && local.path && local.satisfies) {
-    return { node: local.path === 'node' ? 'node' : local.path, npm: 'npm', source: 'path', version: local.version }
+  if (local.hasNode && local.satisfies) {
+    // checkLocal 的 PATH 命中只回 'node'（名字而非路径）→ 绝对化，供调用方推导目录
+    const node = local.path && local.path !== 'node' && local.path !== 'node.exe' ? local.path : (locateNodeExe()?.cmd ?? 'node')
+    const npmCli = npmCliPathFor(node, 'npm-cli.js')
+    return { node, npm: 'npm', ...(npmCli ? { npmCli } : {}), source: 'path', version: local.version }
   }
   return { source: 'none' }
 }

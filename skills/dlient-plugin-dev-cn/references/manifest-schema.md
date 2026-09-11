@@ -70,7 +70,7 @@ Manifest 即插件 `package.json` 的 **`dlient`** 子对象。类型真源：`@
 
 ## 2. `permissions` — 怎么声明
 
-声明值 = 你要用的 host-api **key** 或其模块前缀组。开源模板示例：`app.crypt`、`app.data`、`app.event`、`app.getPath`、`app.notify`、`dialog.showOpenDialog`、`dialog.showSaveDialog`、`log`、`permission.request`、`plugin.invoke`，以及 `fs.read`、`child.spawn`、`webview.create`、`nodejs.resolveRuntime` 等。每次 host-api 调用受两道门禁约束：
+声明值 = 你要用的 host-api **key** 或其模块前缀组。开源模板示例：`app.crypt`、`app.data`、`app.event`、`app.getPath`、`app.notify`、`dialog.showOpenDialog`、`dialog.showSaveDialog`、`log`、`permission.request`、`plugin.invoke`，以及 `fs.read`、`child.spawn`、`nodejs.resolveRuntime` 等。每次 host-api 调用受两道门禁约束：
 
 1. **scope（调用通道门禁）** —— `all`（任意通道）/ `worker`（worker 可达；UI 直连还需白名单条目）/ `ui` / `system`（仅宿主内部——开源版无 system 插件，**插件不可用**）。
 2. **level（安装风险标签）** —— `default`（灰点）/ `warn`（橙点）/ `dangerous`（红点）；导入确认框按此显示色点。
@@ -84,7 +84,7 @@ Manifest 即插件 `package.json` 的 **`dlient`** 子对象。类型真源：`@
 | 剪贴板 | `clipboard.read` `clipboard.write` | 全部 `clipboard.*` |
 | 对话框 | `dialog.showOpenDialog` `dialog.showSaveDialog` | 对所选路径追加所申请的 `fs.*` 授权 |
 | 子进程 | `child.spawn` | SDK `child.spawn` / `child.execFile` 封装 |
-| Webview | `webview.create` `webview.navigate` | create/update/destroy/setVisible/showWebviewByPlugin/hideWebviewByPlugin · webContentsCall |
+| Webview | （无） | `@dlient-open/ui` 的 `<Webview>` **无需声明权限**：使用 `PluginView` 注入的绑定本视图客户端（沙箱与 webPreferences / 方法 / 事件白名单由宿主保留） |
 | Node.js | `nodejs.checkLocal` `nodejs.checkBundled` `nodejs.resolveRuntime` `nodejs.install` | 内置运行时，不是插件 |
 | 插件 | `plugin.install` `plugin.setActive` | `plugin.invoke` / `plugin.requestGrant` 为基础能力（免声明；按 `dependencies` + 目标 `expose` 校验） |
 | 通知 | （无） | `notification.send`/`remove` 无需权限 |

@@ -45,7 +45,7 @@ dlient 插件开发的编码规范。请与各参考指南一并遵守。
 - 从 **`@dlient-open/ui`** 引入（shadcn 风格组件 + lucide 图标 re-export + dlient 专属组件）。不要手写 `Button/Input/Select/Dialog/…` 的替代品。
 - 插件图标一律用 `PluginIcon`（禁止自己实现）；嵌入其它插件 UI 用 `PluginView`；视图包 `PluginErrorBoundary`。
 - 反馈弹框用 `modal`/`createDialog` 或 `Dialog`/`AlertDialog`，不要自绘遮罩。
-- **图标用 lucide**（`Icon` 或从 `@dlient-open/ui` 具名导入）。能用 lucide 图标就不要自绘 SVG/mask 图标。
+- **图标用 lucide**（`Icon` 或从 `@dlient-open/ui` 具名导入，**全量** lucide 图标都已 re-export）。能用 lucide 图标就不要自绘 SVG/mask 图标。
 - 长任务视图包 `PluginErrorBoundary`，避免渲染层错误拖垮宿主。
 
 ### 2.2 访问宿主 / worker
