@@ -1,7 +1,7 @@
 {
     "name":  "dlient-open",
     "private":  true,
-    "version":  "0.1.3",
+    "version":  "0.1.4",
     "author":  "Dlient",
     "type":  "module",
     "description":  "Dlient Open —— 本地优先、插件驱动的开源桌面 AI Agent 宿主",
