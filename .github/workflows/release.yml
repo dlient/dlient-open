@@ -137,6 +137,55 @@ jobs:
           xcrun stapler validate "$DMG"
           spctl -a -t open --context context:primary-signature "$DMG"
 
+      - name: Smoke test — 挂载 DMG、启动应用、30 秒后截图
+        if: matrix.os == 'macos-latest'
+        working-directory: app
+        shell: bash
+        run: |
+          set -euo pipefail
+          DMG=$(ls release/*/*.dmg | head -1)
+          echo "dmg: $DMG"
+
+          # 挂载 DMG（只读，显式挂载点避免解析带空格的卷名）
+          MOUNT="$RUNNER_TEMP/dlient-mnt"
+          hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT" >/dev/null
+          APP="$MOUNT/Dlient Open.app"
+          test -d "$APP" || { echo "::error::DMG 内未找到 Dlient Open.app"; hdiutil detach "$MOUNT" >/dev/null 2>&1 || true; exit 1; }
+
+          # 启动应用（后台），窗口置前
+          "$APP/Contents/MacOS/Dlient Open" >"$RUNNER_TEMP/app.log" 2>&1 &
+          APP_PID=$!
+          osascript -e 'tell application "Dlient Open" to activate' >/dev/null 2>&1 || true
+          echo "app pid: $APP_PID"
+
+          # 要求：启动后等 30 秒再截图（等首帧渲染完成）
+          sleep 30
+
+          if ! kill -0 "$APP_PID" 2>/dev/null; then
+            echo "::warning::应用在截图前已退出，见下方 app.log"
+          fi
+
+          mkdir -p smoke-shot
+          screencapture -x "smoke-shot/dlient-open-${GITHUB_REF_NAME}-mac.png"
+          ls -la smoke-shot
+
+          echo "--- app.log (tail 20) ---"
+          tail -n 20 "$RUNNER_TEMP/app.log" 2>/dev/null || true
+
+          # 清理：结束应用并卸载 DMG
+          kill "$APP_PID" 2>/dev/null || true
+          sleep 2
+          kill -9 "$APP_PID" 2>/dev/null || true
+          hdiutil detach "$MOUNT" >/dev/null 2>&1 || true
+
+      - name: Upload macOS smoke-test screenshot
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-smoke-shot
+          path: app/smoke-shot/*.png
+          if-no-files-found: error
+
       - name: Verify artifacts
         working-directory: app
         shell: bash

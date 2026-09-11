@@ -7,6 +7,7 @@
  * 仅注册白名单方法，不做插件级授权（宿主壳为可信首方 UI）。
  */
 
+import { logger } from '@dlient-open/core'
 import { BrowserWindow, app, dialog, globalShortcut, ipcMain, shell } from 'electron'
 import { readFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
@@ -538,6 +539,73 @@ async function npmInstall(pluginDir: string, args: string[]): Promise<{ ok: bool
   })
 }
 
+// ---- 插件内原生二进制：macOS ad-hoc 签名兜底 ----
+
+/** 需要检查签名的原生二进制后缀（Mach-O 动态库 / 原生模块） */
+const NATIVE_BINARY_EXTS = ['.node', '.dylib', '.so']
+
+/** 递归收集目录下的原生二进制（含 node_modules —— nativeModules 声明的模块装在那里） */
+async function collectNativeBinaries(dir: string): Promise<string[]> {
+  const found: string[] = []
+  const walk = async (current: string): Promise<void> => {
+    let items
+    try {
+      items = await readdir(current, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const item of items) {
+      const full = join(current, item.name)
+      if (item.isDirectory()) await walk(full)
+      else if (item.isFile() && NATIVE_BINARY_EXTS.some((ext) => item.name.endsWith(ext))) found.push(full)
+    }
+  }
+  await walk(dir)
+  return found
+}
+
+/** 执行 codesign（等待退出，超时 kill）；返回是否成功 + 输出（失败时供日志定位） */
+function runCodesign(args: string[], timeoutMs = 60 * 1000): Promise<{ ok: boolean; output: string }> {
+  return new Promise((resolve) => {
+    execFile('/usr/bin/codesign', args, { timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024 }, (err, stdout, stderr) => {
+      const output = `${stdout ?? ''}${stderr ?? ''}`.trim()
+      if (!err) return resolve({ ok: true, output })
+      resolve({ ok: false, output: output || (err instanceof Error ? err.message : String(err)) })
+    })
+  })
+}
+
+/**
+ * macOS：为插件内的原生二进制补 ad-hoc 签名（非 macOS 直接跳过）。
+ *
+ * 为什么需要：Apple Silicon 上所有 Mach-O 可执行代码（.node / .dylib / .so）都必须带有效签名，
+ * 否则加载时报 `code signature invalid`。npm 预编译产物通常已由链接器自动 ad-hoc 签名，但插件
+ * 自带、交叉编译或经后处理（strip 等）过的二进制可能缺失或签名失效，这里在安装落盘后兜底。
+ *
+ * 只对「签名校验不通过」的文件执行 `codesign --force --sign -`：已有效的文件不改动，
+ * 避免无谓改写文件内容与时间戳。
+ *
+ * 必须在 signPluginForDir 之前调用：native=true 的 .node 位于 dist/ 内会被 signature.json
+ * 纳入哈希，先补签再算签名，否则清单与磁盘不一致会导致插件校验失败。
+ * 签名失败不阻断安装（Intel Mac 与 Windows/Linux 均无需签名），仅记 warn 供排查。
+ */
+async function signNativeBinariesForDir(dir: string): Promise<void> {
+  if (process.platform !== 'darwin') return
+  const files = await collectNativeBinaries(dir)
+  if (files.length === 0) return
+  let signed = 0
+  const failed: string[] = []
+  for (const file of files) {
+    const verified = await runCodesign(['--verify', '--strict', file])
+    if (verified.ok) continue
+    const signing = await runCodesign(['--force', '--sign', '-', file])
+    if (signing.ok) signed++
+    else failed.push(`${file}: ${signing.output}`)
+  }
+  if (signed > 0) logger.info('lifecycle', `插件原生二进制补 ad-hoc 签名 ${signed}/${files.length}：${dir}`)
+  if (failed.length > 0) logger.warn('lifecycle', `插件原生二进制签名失败 ${failed.length} 个：${failed.join(' | ')}`)
+}
+
 /** .dlient 导入：preview（选文件 + 解析 manifest + 权限清单）→ 渲染层权限确认 → install（解包落盘）。 */
 
 interface ParsedImport {
@@ -975,6 +1043,9 @@ async function installParsedImport(parsed: ParsedImport, visited: Set<string>): 
     const npm = await npmInstall(targetDir, Object.entries(nativeModules.dependencies).map(([n, v]) => `${n}@${v}`))
     if (!npm.ok) return { ok: false, error: `原生模块安装失败：${npm.error ?? ''}` }
   }
+
+  // 原生二进制：macOS 下补 ad-hoc 签名（须在 signPluginForDir 之前，见函数注释）
+  await signNativeBinariesForDir(targetDir)
 
   // 本地签名（signature.json，格式与闭源一致）：改写后的 manifest（source=local/system=false）+ dist 参与签名
   const signed = await signPluginForDir(targetDir, id, version)
