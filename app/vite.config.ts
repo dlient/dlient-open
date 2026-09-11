@@ -3,20 +3,6 @@ import path from 'node:path'
 import electron from 'vite-plugin-electron/simple'
 import react from '@vitejs/plugin-react'
 
-const electronConfigs = {
-  main: {
-    // 多入口：主进程 + 共享 worker 池运行时（pool-worker，utilityProcess.fork 目标）
-    entry: {
-      index: 'src/main/index.ts',
-      'pool-worker': 'packages/core/src/pool-worker.ts',
-    },
-  },
-  preload: {
-    input: path.join(__dirname, 'src/preload/index.ts'),
-  },
-  renderer: process.env.NODE_ENV === 'test' ? undefined : {},
-}
-
 const alias = {
   // core 为宿主主进程核心库，【最高优先级规则】不发布线上，恒用本地源码
   '@dlient-open/core': path.resolve(__dirname, 'packages/core/src'),
@@ -33,6 +19,27 @@ const alias = {
   '@dlient-open/plugin-sdk': path.resolve(__dirname, 'packages/plugin-sdk/src/index.ts'),
   '@dlient-open/api-types': path.resolve(__dirname, 'packages/api-types/src/index.ts'),
   '@dlient-open/native-host-sdk': path.resolve(__dirname, 'packages/native-host-sdk/src/index.ts'),
+}
+
+// 注意：vite-plugin-electron 的 main / preload 是**独立 vite 构建**（内部 configFile: false），
+// 既不继承本文件的 resolve.alias，也不读 tsconfig 的 paths。若不显式传入 alias，它们会经
+// node_modules 解析到 workspace 包的 package.json（main/exports → packages/*/dist），而 dist 不入库，
+// 于是在没有预构建的环境（CI / 全新克隆）会报 “Failed to resolve entry for package ...”。
+// 故以下两个子构建都显式带上 alias（与 tsconfig paths 一致：恒用本地源码）。
+const electronConfigs = {
+  main: {
+    // 多入口：主进程 + 共享 worker 池运行时（pool-worker，utilityProcess.fork 目标）
+    entry: {
+      index: 'src/main/index.ts',
+      'pool-worker': 'packages/core/src/pool-worker.ts',
+    },
+    vite: { resolve: { alias } },
+  },
+  preload: {
+    input: path.join(__dirname, 'src/preload/index.ts'),
+    vite: { resolve: { alias } },
+  },
+  renderer: process.env.NODE_ENV === 'test' ? undefined : {},
 }
 
 // https://vitejs.dev/config/
