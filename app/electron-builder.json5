@@ -13,6 +13,8 @@
   "directories": {
     "output": "release/${version}"
   },
+  // 产物全部生成后、上传 Release 之前：给 DMG 做公证 + 装订（详见 build/notarize-dmg.cjs）
+  "afterAllArtifactBuild": "build/notarize-dmg.cjs",
   "extraResources": [
     { "from": "build/icon.png", "to": "icon.png" },
     // 子进程收割脚本：必须以真实文件落在 asar 之外（reaper 是纯 node，不认 asar）
@@ -37,7 +39,20 @@
     "target": [
       "dmg"
     ],
-    "artifactName": "${productName}-Mac-${version}-Installer.${ext}"
+    "artifactName": "${productName}-Mac-${version}-Installer.${ext}",
+    // 签名 + 公证：证书与 Apple API Key 由 CI 经 CSC_LINK / CSC_KEY_PASSWORD /
+    // APPLE_API_KEY(.p8 路径) / APPLE_API_KEY_ID / APPLE_API_ISSUER 注入；
+    // 未提供凭据时 electron-builder 会跳过公证（本地构建不受影响）。
+    "hardenedRuntime": true,
+    "gatekeeperAssess": false,
+    "entitlements": "build/entitlements.mac.plist",
+    "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+    "notarize": true
+  },
+  "dmg": {
+    // 公证 DMG 的前提：DMG 自身要先用 Developer ID Application 证书签名（codesign）。
+    // 无证书（本地构建）时 electron-builder 会自动跳过签名。
+    "sign": true
   },
   "win": {
     "icon": "build/icon.png",
